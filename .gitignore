@@ -1,0 +1,24 @@
+
+# VS Code
+.vscode/
+
+# Ballerina build/cache
+**/target/
+**/.ballerina/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Environment/secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp

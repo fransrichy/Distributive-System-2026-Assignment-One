@@ -1,0 +1,8 @@
+# Copy to Config.toml to override defaults.
+# Docs: https://ballerina.io/learn/provide-values-to-configurable-variables/
+
+# TCP port the REST API listens on.
+servicePort = 8080
+
+# Load the six demonstration assets at start up.
+loadSeedData = true

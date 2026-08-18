@@ -1,0 +1,7 @@
+# Copy to Config.toml to override defaults.
+
+# Base URL of the Library REST API.
+apiUrl = "http://localhost:8080"
+
+# Seconds to wait for the server before giving up.
+requestTimeout = 30

@@ -1,0 +1,7 @@
+# Copy to Config.toml to override defaults.
+
+# TCP port the gRPC server listens on.
+serverPort = 9090
+
+# Load the demonstration catalogue at start up.
+loadSeedData = true

@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+#  Line endings
+# ---------------------------------------------------------------------------
+#  Normalise every text file to LF in the repository. Without this, members
+#  working on Windows, macOS and Linux produce whole-file diffs that differ
+#  only by line ending, which makes review impossible and hides real changes.
+#  Working copies still get the native ending on checkout.
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+#  Explicit types, so Git never has to guess
+# ---------------------------------------------------------------------------
+*.bal    text diff=java
+*.toml   text
+*.proto  text
+*.md     text
+*.html   text diff=html
+*.css    text diff=css
+*.js     text diff=javascript
+*.json   text
+
+# ---------------------------------------------------------------------------
+#  Binary: never diff, never normalise
+# ---------------------------------------------------------------------------
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.pdf    binary
+*.jar    binary

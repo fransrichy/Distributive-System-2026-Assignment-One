@@ -1,0 +1,4 @@
+# Copy to Config.toml to override defaults.
+
+# URL of the rental gRPC server.
+serverUrl = "http://localhost:9090"
