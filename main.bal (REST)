@@ -1,0 +1,3 @@
+resource function get search/[string searchTerm]() returns Asset[]|error {
+    return database.searchAssets(searchTerm);
+}
