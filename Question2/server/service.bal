@@ -364,7 +364,10 @@ isolated service "RentalService" on rentalListener {
         Property[] matches = searchAvailable(request);
         log:printInfo("list_available_properties",
                 location = request.location, matches = matches.length());
-        return matches.toStream();
+        if matches.length() == 0 {
+            return error grpc:NotFoundError("No property matched those filters.");
+        }
+        return new stream<Property, error?>(new PropertyGenerator(matches));
     }
 }
 

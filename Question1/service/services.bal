@@ -291,9 +291,7 @@ public isolated function loanAsset(string assetTag, LoanRequest request) returns
     }
     AssetStatus newStatus = request.spaceBooking ? OCCUPIED : LOANED_OUT;
 
-    Asset updated = current.clone();
-    updated.status = newStatus;
-    Asset stored = check saveAsset(updated);
+    Asset stored = check claimAssetForLoan(tag, newStatus);
     LoanRecord loan = {
         loanId: generateId("LN"),
         assetTag: tag,

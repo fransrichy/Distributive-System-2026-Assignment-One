@@ -1,0 +1,2 @@
+servicePort = 8085
+loadSeedData = true

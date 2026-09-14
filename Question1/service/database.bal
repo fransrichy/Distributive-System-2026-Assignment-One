@@ -216,6 +216,25 @@ public isolated function insertLoan(LoanRecord loan) returns LoanRecord|Conflict
     }
 }
 
+public isolated function claimAssetForLoan(string assetTag, AssetStatus newStatus)
+        returns Asset|AppError {
+    lock {
+        Asset? found = assetTable[assetTag];
+        if found is () {
+            return error NotFoundError(string `No asset found with tag '${assetTag}'.`);
+        }
+        Asset current = found.clone();
+        if current.status != AVAILABLE || hasOpenWorkOrder(current) {
+            return error ConflictError(
+                string `Asset '${assetTag}' cannot be loaned because its status is ${current.status}. ` +
+                string `Only AVAILABLE assets can be issued.`);
+        }
+        current.status = newStatus;
+        assetTable.put(current.clone());
+        return current.clone();
+    }
+}
+
 public isolated function selectActiveLoan(string assetTag) returns LoanRecord? {
     lock {
         LoanRecord[] open = from LoanRecord l in loanTable

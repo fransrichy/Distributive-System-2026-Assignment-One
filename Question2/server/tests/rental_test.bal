@@ -132,7 +132,10 @@ function testAllRentalOperations() returns error? {
                                                     });
     test:assertEquals(filtered.length(), 1);
     test:assertEquals(filtered[0].propertyId, property.propertyId);
-    test:assertEquals((check collectProperties(rentalClient, {location: "NO SUCH PLACE"})).length(), 0);
+    test:assertTrue(collectProperties(rentalClient, {location: "NO SUCH PLACE"}) is error);
+    test:assertTrue(collectProperties(rentalClient, {minPrice: 200.0, maxPrice: 100.0}) is error);
+    test:assertTrue(collectProperties(rentalClient, {minPrice: -1.0}) is error);
+    test:assertTrue(collectProperties(rentalClient, {maxPrice: float:NaN}) is error);
 
     RemovePropertyResponse denied = check rentalClient->remove_property({
         propertyId: removable.propertyId, hostId: "TEST-HOST-B"
