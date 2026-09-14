@@ -8,7 +8,7 @@ Two complete distributed systems in one repository:
 | # | Project | Protocol | Marks |
 |---|---------|----------|-------|
 | 1 | Distributed Library and Resource Management System | REST over HTTP/1.1 | 50 |
-| 2 | Rental Accommodation System | gRPC over HTTP/2 | 50 |
+| 2 | Rental Accomodation System | gRPC over HTTP/2 | 50 |
 
 Both are written in **Ballerina Swan Lake**, the language purpose-built for
 network-distributed programming.
