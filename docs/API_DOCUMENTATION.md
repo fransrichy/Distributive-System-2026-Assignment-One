@@ -803,7 +803,8 @@ response to send:
 | Status | Raised by | When |
 |--------|-----------|------|
 | `ABORTED` | `create_users` | The inbound client stream broke mid-flight |
-| `INVALID_ARGUMENT` | `list_available_properties` | `minPrice > maxPrice` |
+| `INVALID_ARGUMENT` | `list_available_properties` | `minPrice > maxPrice`, or a negative / non-finite filter |
+| `NOT_FOUND` | `list_available_properties` | No listing matched the filters |
 
 ---
 
@@ -1174,12 +1175,26 @@ Only `AVAILABLE` listings are ever streamed. Results come cheapest first.
 `minPrice > maxPrice` is rejected with `INVALID_ARGUMENT`, because an empty
 stream would otherwise be indistinguishable from "nothing is available".
 
+### No matches
+
+When no listing satisfies the filters the server returns `NOT_FOUND` with the
+message `No property matched those filters.` rather than an empty stream.
+
+This is deliberate. A Ballerina gRPC client blocks inside
+`executeServerStreaming` until the first message arrives, so a stream that
+never yields anything leaves the caller waiting indefinitely. Returning a
+status instead gives the client something to act on immediately, and the
+client renders it as a normal "nothing matched" message.
+
 ### Server side
 
 ```ballerina
 remote function list_available_properties(ListAvailableRequest request)
         returns stream<Property, error?>|error {
     Property[] matches = searchAvailable(request);
+    if matches.length() == 0 {
+        return error grpc:NotFoundError("No property matched those filters.");
+    }
     return new stream<Property, error?>(new PropertyGenerator(matches));
 }
 ```

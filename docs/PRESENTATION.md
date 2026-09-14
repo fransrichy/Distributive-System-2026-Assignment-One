@@ -8,6 +8,14 @@ Rental Accommodation System (gRPC)
 > Timings per slide are in the margin. Everything in *italics* is a speaker
 > note, not something to put on the slide.
 
+> **This file is the *what to say*.** For the *what to do* — VS Code setup,
+> the exact commands, which terminal to use, how to open and explain the web
+> dashboard, and how to recover if something fails mid-demo — use
+> [`PRESENTATION_RUNBOOK.md`](PRESENTATION_RUNBOOK.md) or its printable PDF,
+> [`DSA612S-Presentation-Runbook.pdf`](DSA612S-Presentation-Runbook.pdf).
+> Run the two side by side: the runbook drives the machine, these notes drive
+> the talking.
+
 ---
 
 ## Contents

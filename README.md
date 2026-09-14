@@ -31,7 +31,13 @@ If Apache is unavailable, run `.\scripts\run.ps1 web` and open the URL it prints
 The web launcher requires Python; the four Ballerina programs do not.
 
 The package defaults below remain REST 8080 and gRPC 9090 for other computers.
-See [verification results and remaining submission items](docs/VERIFICATION.md).
+
+**Presenting this project?** Follow the step-by-step guide:
+[`docs/PRESENTATION_RUNBOOK.md`](docs/PRESENTATION_RUNBOOK.md), also available
+as a printable PDF at
+[`docs/DSA612S-Presentation-Runbook.pdf`](docs/DSA612S-Presentation-Runbook.pdf).
+It covers VS Code setup, every command, what to say at each step, how to open
+and explain the web dashboard, and what to do if something fails live.
 
 ---
 
@@ -142,8 +148,10 @@ DSA612S-Assignment/
 │       └── rental_pb.bal         ← generated Protocol Buffer stub
 │
 └── docs/
-    ├── API_DOCUMENTATION.md      ← every endpoint and every RPC, in detail
-    └── PRESENTATION.md           ← speaker notes for the defence
+    ├── API_DOCUMENTATION.md              ← every endpoint and every RPC, in detail
+    ├── PRESENTATION.md                   ← slide-by-slide speaker notes
+    ├── PRESENTATION_RUNBOOK.md           ← step-by-step guide for demo day
+    └── DSA612S-Presentation-Runbook.pdf  ← the same runbook, printable
 ```
 
 Each of the four Ballerina packages is **independent** — its own
@@ -898,16 +906,18 @@ bal doc
 
 ## Group members
 
+**Group 22** — DSA612S, Namibia University of Science and Technology.
+
 | Name | Student number | Contribution |
 |------|----------------|--------------|
-| _(add name)_ | _(add number)_ | REST service — models, database, services |
-| _(add name)_ | _(add number)_ | REST service — transport layer, error handling |
-| _(add name)_ | _(add number)_ | REST CLI client |
-| _(add name)_ | _(add number)_ | Web dashboard (bonus) |
-| _(add name)_ | _(add number)_ | Protocol Buffer contract |
-| _(add name)_ | _(add number)_ | gRPC server — service layer |
-| _(add name)_ | _(add number)_ | gRPC server — persistence and concurrency |
-| _(add name)_ | _(add number)_ | gRPC client and documentation |
+| Matatias Nghihangwa | 225156237 | Project documentation — README, API reference, presentation notes |
+| Eliaser Angula *(leader)* | 225053241 | REST CLI client; repository coordination |
+| Pandera Katjipuka | 225123851 | REST service — models, database, services |
+| Monika Shalauda | 222075449 | REST service — transport layer, error handling |
+| Risto Sakeus | 225042428 | Web dashboard (bonus); streaming documentation |
+| Alanray Miller | 223003018 | Protocol Buffer contract |
+| Kavara Edward | 225017288 | gRPC server — booking rules and concurrency |
+| Haufiku Frans | 222127147 | gRPC server and client; testing |
 
 > All members must appear as contributors in the repository history.
 
