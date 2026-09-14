@@ -835,3 +835,5 @@ public function main() returns error? {
         }
     }
 }
+
+// The client maintains lightweight session state to simplify repeated demonstration operations.
