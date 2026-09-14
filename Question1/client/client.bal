@@ -829,3 +829,5 @@ public function main() returns error? {
         }
     }
 }
+
+// Client-side helpers and menu actions keep user interaction separate from API communication.
