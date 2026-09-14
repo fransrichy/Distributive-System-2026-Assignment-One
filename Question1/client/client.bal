@@ -13,7 +13,7 @@
 //  ----
 //     1  View Assets                 6  View Campus Assets
 //     2  Search Asset                7  View Overdue Maintenance
-//     3  Loan Asset                  8  Add Schedule
+//     3  Loan Asset                  8  Create Schedule
 //     4  Return Asset                9  Create Work Order
 //     5  View Institution Assets    10  Exit
 //
