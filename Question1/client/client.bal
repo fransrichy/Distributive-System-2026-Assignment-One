@@ -249,9 +249,9 @@ function printOk(string message) {
 
 # Executes one API call and normalises the outcome.
 #
-# Sends the request with the correct verb and hands back the raw response.
+# Sends the request using the appropriate HTTP method and returns the server’s response.
 #
-# `http:Client` exposes one remote method per verb, so the verb is dispatched
+# `http:Client` exposes one remote method per verb, so the verb is dispatched  
 # here rather than passed through as a string. Every branch returns its own
 # value, which is what keeps the caller free of an uninitialised variable.
 #
@@ -742,7 +742,7 @@ function printMenu() {
     io:println(line("=", 62));
 }
 
-# Confirms the API is reachable before the menu is shown, so that a wrong
+# Confirms the API is reachable before the menu is shown, so that a wrong 
 # port or a server that is not running is reported once and clearly instead of
 # failing on every menu option.
 #
