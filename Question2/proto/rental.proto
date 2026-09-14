@@ -239,7 +239,9 @@ message CreateUserRequest {
   string region = 6;            // Hosts only; ignored for guests.
 }
 
-// A single summary returned once the client has closed the stream.
+// A single summary
+
+ returned once the client has closed the stream.
 message CreateUsersSummary {
   bool success = 1;
   string message = 2;
