@@ -2,7 +2,7 @@
 //  DSA612S - Assignment 1 - Question 1
 //  Distributed Library and Resource Management System
 //  ---------------------------------------------------------------------------
-//  client.bal
+//  client.bal - Question 1 client implementation
 //  ---------------------------------------------------------------------------
 //  An interactive command line front end for the REST API defined in
 //  `Question1/service`. It is a *separate Ballerina package*, so it talks to
