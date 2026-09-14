@@ -831,3 +831,5 @@ public function main() returns error? {
 }
 
 // Client-side helpers and menu actions keep user interaction separate from API communication.
+
+// Input handling is kept explicit so each client operation can validate user data before sending requests.
