@@ -837,3 +837,5 @@ public function main() returns error? {
 }
 
 // The client maintains lightweight session state to simplify repeated demonstration operations.
+
+// Streaming results are consumed incrementally so each property can be displayed as it arrives.
