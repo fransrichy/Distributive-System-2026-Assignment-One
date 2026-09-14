@@ -659,3 +659,5 @@ isolated function validateAddRequest(AddPropertyRequest request) returns error? 
 }
 
 // Business rejections are returned through the RPC response so clients receive clear failure messages.
+
+// Client-streamed user records are processed independently so valid records can still be created when another record fails.
