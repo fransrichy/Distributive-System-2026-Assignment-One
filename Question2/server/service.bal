@@ -657,3 +657,5 @@ isolated function validateAddRequest(AddPropertyRequest request) returns error? 
     }
     return ();
 }
+
+// Business rejections are returned through the RPC response so clients receive clear failure messages.
