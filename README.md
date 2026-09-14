@@ -13,6 +13,26 @@ Two complete distributed systems in one repository:
 Both are written in **Ballerina Swan Lake**, the language purpose-built for
 network-distributed programming.
 
+## Running on this Windows/XAMPP computer
+
+Ballerina 2201.13.5 is installed. XAMPP uses port 8080, so the PowerShell
+launcher uses **8081 for REST** and **9090 for gRPC**. From this repository,
+run each command in a separate terminal:
+
+```powershell
+.\scripts\run.ps1 rest
+.\scripts\run.ps1 rest-client
+.\scripts\run.ps1 grpc
+.\scripts\run.ps1 grpc-client
+```
+
+Open the [library dashboard through XAMPP](http://localhost/DISTRIBUTIVE%20SYSTEM/DSA612S-Assignment/Question1/web/?apiBase=http://localhost:8081).
+If Apache is unavailable, run `.\scripts\run.ps1 web` and open the URL it prints.
+The web launcher requires Python; the four Ballerina programs do not.
+
+The package defaults below remain REST 8080 and gRPC 9090 for other computers.
+See [verification results and remaining submission items](docs/VERIFICATION.md).
+
 ---
 
 ## Table of contents
@@ -34,7 +54,7 @@ network-distributed programming.
 
 ---
 
-## 1. Project description
+## 1. Project description last
 
 ### Question 1 — Distributed Library and Resource Management System
 
@@ -90,7 +110,7 @@ DSA612S-Assignment/
 ├── Question1/                    ── REST: Library & Resource Management
 │   ├── service/                  ── the HTTP API (Ballerina package)
 │   │   ├── Ballerina.toml
-│   │   ├── main.bal              ← transport layer: listener + 24 resources
+│   │   ├── main.bal              ← transport layer: listener + 25 resources
 │   │   ├── models.bal            ← domain records, enums, DTOs, typed responses
 │   │   ├── database.bal          ← in-memory table<Asset> key(assetTag) + seed
 │   │   ├── services.bal          ← business rules, transport-agnostic
@@ -159,11 +179,11 @@ build.
 ### Clone the repository
 
 ```bash
-git clone https://github.com/fransrichy/DSA612S-2026-ASIGNMENT-1.git
+git clone <your-repository-url>
 ```
 
 ```bash
-cd DSA612S-2026-ASIGNMENT-1
+cd DSA612S-Assignment
 ```
 
 ---
@@ -229,7 +249,7 @@ You get the interactive menu:
     5.  View Institution Assets    (filter by institution)
     6.  View Campus Assets         (filter by site)
     7.  View Overdue Maintenance   (staff dashboard)
-    8.  Add Schedule               (schedule manager)
+    8.  Manage Schedules           (add / modify / remove)
     9.  Create Work Order          (fault reporting)
    10.  Exit
 ==============================================================
@@ -244,7 +264,7 @@ bal run -- -CapiUrl=http://192.168.1.20:8080
 ### 4.3 A three-minute demonstration script
 
 1. Option **1** — see all six assets.
-2. Option **7** — four overdue schedules across NUST, UNAM and IUM.
+2. Option **7** — overdue schedules across NUST, UNAM and IUM.
 3. Option **3** — loan `NUST-LIB-LAP-014` to a student; status becomes `LOANED_OUT`.
 4. Option **1** again — the status change is visible.
 5. Option **4** — return it, answering `y` to "damaged"; the asset moves to
@@ -294,6 +314,7 @@ Copy `Question1/web` into `htdocs` and browse to
 | Loan an asset / book a space | **Loan** button |
 | Return an asset, optionally flagging damage | **Return** button |
 | Add a maintenance / servicing / inspection / booking schedule | **Schedule** button |
+| Modify a schedule's date, type or description | **Edit** in asset detail or the Overdue tab |
 | Open a work order with any number of sub-tasks | **W/O** button |
 | Close or delete a work order | Work Orders tab |
 | Overdue maintenance dashboard | Overdue tab |
@@ -448,26 +469,6 @@ curl -X PUT http://localhost:8080/assets/NUST-LIB-3DP-001 -H "Content-Type: appl
 curl -X DELETE http://localhost:8080/assets/NUST-LIB-3DP-002
 ```
 
-### Add an institution
-
-Registers an institution so that it appears in the listing before any of its
-assets have been captured.
-
-```bash
-curl -X POST http://localhost:8080/institutions -H "Content-Type: application/json" -d "{\"name\":\"Welwitschia University of Namibia\",\"description\":\"WUN - private institution, Windhoek\"}"
-```
-
-`201 Created` with the stored institution.
-
-### Remove an institution
-
-Withdraws the institution, its registry row and every asset it owns. Refused
-with `409` while any of those assets is still on loan.
-
-```bash
-curl -X DELETE "http://localhost:8080/institutions/Welwitschia%20University%20of%20Namibia"
-```
-
 ### Filter by institution
 
 ```bash
@@ -502,11 +503,6 @@ curl http://localhost:8080/maintenance/overdue
   }
 ]
 ```
-
-Only the first of four rows is shown. Seeded schedule dates are generated
-**relative to the day you run the server** (two at −45 days, two at −7 days), so
-the demo never goes stale — but the literal `dueDate` above will differ from
-what you see. Rows are sorted most-overdue first.
 
 ### Loan an asset
 
@@ -599,7 +595,7 @@ curl http://localhost:8080/assets/DOES-NOT-EXIST
 | `409` | Conflict | duplicate `assetTag`, loaning an asset that is already out |
 | `500` | Internal Server Error | an unexpected failure escaping the service layer |
 
-Full documentation of all 24 endpoints: [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md).
+Full documentation of all 25 endpoints: [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md).
 
 ---
 
@@ -680,7 +676,7 @@ Full documentation of all eight RPCs: [`docs/API_DOCUMENTATION.md`](docs/API_DOC
                 │  JSON over HTTP/1.1
    ┌────────────▼──────────────────────────────────────┐
    │  main.bal      TRANSPORT LAYER                    │
-   │  24 resource functions, typed HTTP responses,     │
+   │  25 resource functions, typed HTTP responses,     │
    │  CORS, status-code mapping                        │
    ├───────────────────────────────────────────────────┤
    │  services.bal  BUSINESS LAYER                     │
@@ -904,14 +900,14 @@ bal doc
 
 | Name | Student number | Contribution |
 |------|----------------|--------------|
-| Matatias Nghihangwa | 225156237 | REST service — models, database, services |
-| Eliaser Angula _(group leader)_ | 225053241 | REST service — transport layer, error handling |
-| Pandera Katjipuka | 225123851 | REST CLI client |
-| Monika Shalauda | 222075449 | Web dashboard (bonus) |
-| Risto Sakeus | 225042428 | Protocol Buffer contract |
-| Alanray Miller | 223003018 | gRPC server — service layer |
-| Kavara Edward | 225017288 | gRPC server — persistence and concurrency |
-| Haufiku Frans | 222127147 | gRPC client and documentation |
+| _(add name)_ | _(add number)_ | REST service — models, database, services |
+| _(add name)_ | _(add number)_ | REST service — transport layer, error handling |
+| _(add name)_ | _(add number)_ | REST CLI client |
+| _(add name)_ | _(add number)_ | Web dashboard (bonus) |
+| _(add name)_ | _(add number)_ | Protocol Buffer contract |
+| _(add name)_ | _(add number)_ | gRPC server — service layer |
+| _(add name)_ | _(add number)_ | gRPC server — persistence and concurrency |
+| _(add name)_ | _(add number)_ | gRPC client and documentation |
 
 > All members must appear as contributors in the repository history.
 

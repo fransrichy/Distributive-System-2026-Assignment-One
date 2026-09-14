@@ -1,34 +1,3 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  database.bal
-//  ---------------------------------------------------------------------------
-//  The *persistence layer*. The assignment calls for an in-memory store built
-//  on a Ballerina `map` or `table`, so this module keeps two tables:
-//
-//    * `assetTable` - `table<Asset> key(assetTag)`, the primary store. Using a
-//      keyed table gives O(1) primary key lookups plus first-class query
-//      syntax, and lets the runtime enforce `assetTag` uniqueness for us.
-//    * `loanTable`  - `table<LoanRecord> key(loanId)`, the loan audit trail.
-//
-//  CONCURRENCY
-//  -----------
-//  A `service` in Ballerina handles every request on its own strand, so the
-//  store is genuinely shared mutable state. Both tables are therefore declared
-//  `isolated`, which forces the compiler to reject any access that happens
-//  outside a `lock` block. Values are `clone()`d on the way in and on the way
-//  out so that no caller can ever hold a reference into the store and mutate
-//  it behind the lock's back.
-//
-//  Every function in this file is a thin, single-purpose data access
-//  operation. All business rules live in `services.bal`.
-// ============================================================================
-
-// ============================================================================
-//  SECTION 1 - THE STORES
-// ============================================================================
-
 # Primary in-memory store. `assetTag` is the unique key, exactly as required
 # by the assignment brief.
 isolated table<Asset> key(assetTag) assetTable = table [];
@@ -40,10 +9,6 @@ isolated table<LoanRecord> key(loanId) loanTable = table [];
 # An institution may also be implied by the assets that reference it; the two
 # sources are merged by `selectDistinctInstitutions`.
 isolated table<Institution> key(name) institutionTable = table [];
-
-// ============================================================================
-//  SECTION 2 - ASSET DATA ACCESS
-// ============================================================================
 
 # Tests whether an asset with the given tag is present.
 #
@@ -65,7 +30,6 @@ public isolated function insertAsset(Asset asset) returns Asset|ConflictError {
             return error ConflictError(
                 string `An asset with tag '${asset.assetTag}' already exists.`);
         }
-        // Clone on the way in: the caller keeps its own independent copy.
         assetTable.add(asset.clone());
         return asset.clone();
     }
@@ -110,7 +74,6 @@ public isolated function saveAsset(Asset asset) returns Asset|NotFoundError {
         if !assetTable.hasKey(asset.assetTag) {
             return error NotFoundError(string `No asset found with tag '${asset.assetTag}'.`);
         }
-        // `put` replaces the row that carries the same key.
         assetTable.put(asset.clone());
         return asset.clone();
     }
@@ -167,17 +130,11 @@ public isolated function selectBySite(string site) returns Asset[] {
 #
 # + return - A sorted, de-duplicated list of institution names.
 public isolated function selectDistinctInstitutions() returns string[] {
-    // Ballerina permits only one restricted variable per `lock` statement, so
-    // the two sources are read under separate locks and merged afterwards.
-    // Merging outside the locks is safe because both helpers hand back
-    // detached copies.
     string[] registered = selectRegisteredNames();
     string[] owning = selectOwningNames();
 
     map<boolean> seen = {};
     string[] names = [];
-    // Registered institutions go in first so one that owns no assets yet still
-    // reaches the listing; institutions implied by an asset fold in on top.
     foreach string candidate in [...registered, ...owning] {
         string name = candidate.trim();
         if name.length() == 0 {
@@ -286,7 +243,6 @@ public isolated function insertInstitution(Institution institution)
                     string `Institution '${institution.name}' is already registered.`);
             }
         }
-        // Clone on the way in: the caller keeps its own independent copy.
         institutionTable.add(institution.clone());
         return institution.clone();
     }
@@ -318,8 +274,6 @@ public isolated function countByStatus() returns map<int> {
     lock {
         map<int> tally = {};
         foreach Asset a in assetTable {
-            // `key` is a reserved word (used by `table<T> key(...)`), so the
-            // local is called `statusName`.
             string statusName = a.status;
             tally[statusName] = (tally[statusName] ?: 0) + 1;
         }
@@ -335,10 +289,6 @@ public isolated function countAssets() returns int {
         return assetTable.length();
     }
 }
-
-// ============================================================================
-//  SECTION 3 - LOAN DATA ACCESS
-// ============================================================================
 
 # Records the start of a loan or space booking.
 #
@@ -404,10 +354,6 @@ public isolated function selectLoans(string? assetTag = ()) returns LoanRecord[]
     }
 }
 
-// ============================================================================
-//  SECTION 4 - SEED DATA
-// ============================================================================
-
 # Populates the store with a realistic cross-campus data set so that the CLI
 # client, the web dashboard and the marker all have something to work with the
 # moment the server starts.
@@ -417,7 +363,6 @@ public isolated function selectLoans(string? assetTag = ()) returns LoanRecord[]
 #
 # + return - The number of assets that were seeded.
 public isolated function seedDatabase() returns int {
-    // Deliberately relative to *today* so the demo never goes stale.
     string overdueDate = checkpanic addDays(today(), -45);
     string recentlyOverdue = checkpanic addDays(today(), -7);
     string upcoming = checkpanic addDays(today(), 60);
@@ -430,7 +375,7 @@ public isolated function seedDatabase() returns int {
             description: "High-precision laboratory printer for simulation and prototype development.",
             institution: "Namibia University of Science and Technology",
             site: "Main Campus - Innovation Lab",
-            status: AVAILABLE,
+            status: UNDER_MAINTENANCE,
             dateAcquired: "2024-03-10",
             components: [
                 {
@@ -602,8 +547,6 @@ public isolated function seedDatabase() returns int {
         if result is Asset {
             inserted += 1;
         }
-        // A conflict here can only mean `seedDatabase` was called twice; it is
-        // safe to ignore because the existing row is already correct.
     }
     return inserted;
 }

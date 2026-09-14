@@ -1,39 +1,10 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  services.bal
-//  ---------------------------------------------------------------------------
-//  The *business logic layer*. Everything in this file is transport agnostic:
-//  no `http` import appears anywhere below. That separation is what lets the
-//  same rules be reused from a future gRPC or GraphQL front end, and it makes
-//  the rules unit-testable without spinning up a listener.
-//
-//  Responsibilities:
-//    * Enforce domain invariants (an asset that is out cannot be loaned again,
-//      a disposed asset cannot be serviced, identifiers must stay unique).
-//    * Generate identifiers for nested resources when the caller omits them.
-//    * Compose the read models the client needs (overdue report, summary).
-//
-//  Every function returns either the value it produced, or one of the four
-//  `AppError` subtypes, which `util.bal` later maps onto an HTTP status code.
-// ============================================================================
-
-// ============================================================================
-//  SECTION 1 - ASSET CRUD
-// ============================================================================
-
 # Creates and stores a brand new asset.
 #
 # + asset - The candidate asset, exactly as supplied by the client.
 # + return - The stored asset, a `ValidationError` when the payload is invalid,
 #            or a `ConflictError` when the `assetTag` is already taken.
 public isolated function createAsset(Asset asset) returns Asset|AppError {
-    // 1. Structural and semantic validation of the whole aggregate.
     check validateAsset(asset);
-
-    // 2. Normalise the key so that lookups behave predictably. Tags are
-    //    treated as case sensitive but never carry stray whitespace.
     Asset normalised = {
         assetTag: asset.assetTag.trim(),
         name: asset.name.trim(),
@@ -46,8 +17,9 @@ public isolated function createAsset(Asset asset) returns Asset|AppError {
         schedules: asset.schedules.clone(),
         workOrders: asset.workOrders.clone()
     };
-
-    // 3. Hand off to the persistence layer, which enforces key uniqueness.
+    if normalised.status == AVAILABLE && hasOpenWorkOrder(normalised) {
+        normalised.status = UNDER_MAINTENANCE;
+    }
     return check insertAsset(normalised);
 }
 
@@ -82,13 +54,11 @@ public isolated function updateAsset(string assetTag, AssetUpdate update) return
     Asset current = check selectAsset(assetTag.trim());
 
     AssetStatus newStatus = update?.status ?: current.status;
-
-    // Domain rule: an asset that is physically in someone else's hands may not
-    // be written off. It has to be returned first.
-    if newStatus == DISPOSED && selectActiveLoan(current.assetTag) is LoanRecord {
+    if newStatus != current.status && (selectActiveLoan(current.assetTag) is LoanRecord
+            || current.status == LOANED_OUT || current.status == OCCUPIED
+            || newStatus == LOANED_OUT || newStatus == OCCUPIED) {
         return error ConflictError(
-            string `Asset '${current.assetTag}' is currently on loan and cannot be marked DISPOSED. ` +
-            string `Return it first via POST /assets/${current.assetTag}/return.`);
+            "Use the loan or return endpoint to change an asset's loan or occupancy status.");
     }
 
     Asset merged = {
@@ -105,6 +75,17 @@ public isolated function updateAsset(string assetTag, AssetUpdate update) return
     };
 
     check validateAsset(merged);
+    Schedule[]? schedules = update?.schedules;
+    if schedules is Schedule[] {
+        foreach Schedule schedule in schedules {
+            if schedule.'type == BOOKING {
+                check checkBookingAgainstLoan(current.assetTag, schedule.dueDate.trim());
+            }
+        }
+    }
+    if merged.status == AVAILABLE && hasOpenWorkOrder(merged) {
+        merged.status = UNDER_MAINTENANCE;
+    }
     return check saveAsset(merged);
 }
 
@@ -115,21 +96,14 @@ public isolated function updateAsset(string assetTag, AssetUpdate update) return
 public isolated function deleteAsset(string assetTag) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     string tag = assetTag.trim();
-
-    // Read first so we can enforce the "not while it is out" rule before we
-    // destroy anything.
     Asset current = check selectAsset(tag);
-    if current.status == LOANED_OUT || current.status == OCCUPIED {
+    if current.status == LOANED_OUT || current.status == OCCUPIED || selectActiveLoan(tag) is LoanRecord {
         return error ConflictError(
             string `Asset '${tag}' is currently ${current.status} and cannot be deleted. ` +
             string `Return or release it first.`);
     }
     return check deleteAssetRow(tag);
 }
-
-// ============================================================================
-//  SECTION 2 - FILTERED VIEWS
-// ============================================================================
 
 # Lists every asset owned by one institution.
 #
@@ -206,7 +180,6 @@ public isolated function listSites(string? institution = ()) returns string[] {
     return selectDistinctSites(institution);
 }
 
-
 # Registers an institution so that it appears in the listing before any of its
 # assets have been captured. Without this an institution could only enter the
 # listing as a side effect of creating an asset, which is the wrong way round
@@ -221,10 +194,6 @@ public isolated function registerInstitution(InstitutionRequest request)
     check requireMaxLength(request.description, "description", 500);
 
     string name = request.name.trim();
-
-    // An institution already implied by an asset is in the listing whether or
-    // not it has a registry row, so registering it again would show a
-    // duplicate. The merged listing is therefore the thing to check against.
     string needle = name.toLowerAscii();
     foreach string existing in listInstitutions() {
         if existing.trim().toLowerAscii() == needle {
@@ -250,16 +219,13 @@ public isolated function registerInstitution(InstitutionRequest request)
 public isolated function removeInstitution(string institution) returns string[]|AppError {
     check requireNonBlank(institution, "institution");
     Asset[] owned = selectByInstitution(institution);
-
-    // An institution registered ahead of its assets owns nothing yet, but is
-    // still in the listing and so must still be removable.
     boolean registered = institutionExists(institution);
     if owned.length() == 0 && !registered {
         return error NotFoundError(
             string `No institution named '${institution}' is present in the listing.`);
     }
     foreach Asset a in owned {
-        if a.status == LOANED_OUT || a.status == OCCUPIED {
+        if a.status == LOANED_OUT || a.status == OCCUPIED || selectActiveLoan(a.assetTag) is LoanRecord {
             return error ConflictError(
                 string `Institution '${institution}' still has asset '${a.assetTag}' in status ` +
                 string `${a.status}. All assets must be returned before the institution can be removed.`);
@@ -268,10 +234,6 @@ public isolated function removeInstitution(string institution) returns string[]|
     _ = deleteInstitutionRow(institution);
     return deleteByInstitution(institution);
 }
-
-// ============================================================================
-//  SECTION 3 - MAINTENANCE AND OVERDUE REPORTING
-// ============================================================================
 
 # Builds the overdue report: every schedule entry whose due date lies in the
 # past, flattened together with its parent asset.
@@ -296,8 +258,6 @@ public isolated function overdueSchedules(string? institution = (), string? site
     } else {
         candidates = selectAllAssets();
     }
-
-    // When both filters are supplied, narrow the first result set by the other.
     if institution is string && institution.trim().length() > 0
             && site is string && site.trim().length() > 0 {
         string siteNeedle = site.trim().toLowerAscii();
@@ -310,7 +270,6 @@ public isolated function overdueSchedules(string? institution = (), string? site
     OverdueSchedule[] report = [];
 
     foreach Asset a in candidates {
-        // A written off asset is out of scope for maintenance chasing.
         if a.status == DISPOSED {
             continue;
         }
@@ -323,8 +282,6 @@ public isolated function overdueSchedules(string? institution = (), string? site
             }
             int|ValidationError elapsed = daysBetween(s.dueDate, todayIso);
             if elapsed is ValidationError {
-                // A malformed stored date must not sink the whole report, so
-                // it is reported with a sentinel of -1 rather than thrown.
                 report.push({
                     assetTag: a.assetTag,
                     assetName: a.name,
@@ -353,8 +310,6 @@ public isolated function overdueSchedules(string? institution = (), string? site
             });
         }
     }
-
-    // Most overdue first: that is the order a maintenance officer wants.
     return from OverdueSchedule row in report
         order by row.daysOverdue descending
         select row;
@@ -380,10 +335,6 @@ public isolated function dashboardSummary() returns map<json> {
     };
 }
 
-// ============================================================================
-//  SECTION 4 - LOANING AND RETURNING
-// ============================================================================
-
 # Loans an asset to a borrower, or books a physical space.
 #
 # Domain rules enforced here:
@@ -402,13 +353,11 @@ public isolated function loanAsset(string assetTag, LoanRequest request) returns
     string tag = assetTag.trim();
     Asset current = check selectAsset(tag);
 
-    if current.status != AVAILABLE {
+    if current.status != AVAILABLE || selectActiveLoan(tag) is LoanRecord || hasOpenWorkOrder(current) {
         return error ConflictError(
             string `Asset '${tag}' cannot be loaned because its status is ${current.status}. ` +
             string `Only AVAILABLE assets can be issued.`);
     }
-
-    // Default loan period: two weeks, the standard library circulation term.
     string dueDate;
     string? requestedDue = request?.dueDate;
     if requestedDue is string && requestedDue.trim().length() > 0 {
@@ -422,14 +371,18 @@ public isolated function loanAsset(string assetTag, LoanRequest request) returns
         dueDate = check addDays(today(), 14);
     }
 
-    // A room or lab becomes OCCUPIED; a book or laptop becomes LOANED_OUT.
+    foreach Schedule schedule in current.schedules {
+        if schedule.'type == BOOKING && schedule.dueDate.trim() >= today()
+                && schedule.dueDate.trim() <= dueDate {
+            return error ConflictError(
+                string `Asset '${tag}' is reserved on ${schedule.dueDate} by schedule '${schedule.scheduleId}'.`);
+        }
+    }
     AssetStatus newStatus = request.spaceBooking ? OCCUPIED : LOANED_OUT;
 
     Asset updated = current.clone();
     updated.status = newStatus;
     Asset stored = check saveAsset(updated);
-
-    // Write the audit trail entry only after the status change succeeded.
     LoanRecord loan = {
         loanId: generateId("LN"),
         assetTag: tag,
@@ -451,6 +404,7 @@ public isolated function loanAsset(string assetTag, LoanRequest request) returns
 # + return - The asset in its new status, or an `AppError`.
 public isolated function returnAsset(string assetTag, ReturnRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
+    check requireMaxLength(request.notes, "notes", 450);
     string tag = assetTag.trim();
     Asset current = check selectAsset(tag);
 
@@ -459,22 +413,13 @@ public isolated function returnAsset(string assetTag, ReturnRequest request) ret
             string `Asset '${tag}' is not currently out; its status is ${current.status}. ` +
             string `Nothing to return.`);
     }
-
-    // A damaged asset goes straight into the maintenance queue instead of back
-    // onto the shelf.
     Asset updated = current.clone();
-    updated.status = request.sendForMaintenance ? UNDER_MAINTENANCE : AVAILABLE;
+    updated.status = request.sendForMaintenance || hasOpenWorkOrder(current) ? UNDER_MAINTENANCE : AVAILABLE;
     Asset stored = check saveAsset(updated);
-
-    // Close the audit trail entry if one is open. A missing entry is tolerated
-    // because an asset may have been seeded directly in an "out" status.
     LoanRecord? active = selectActiveLoan(tag);
     if active is LoanRecord {
         _ = check closeLoan(active.loanId, today());
     }
-
-    // If the borrower reported damage, raise a work order automatically so the
-    // fault is never lost.
     if request.sendForMaintenance {
         string notes = request.notes.trim();
         WorkOrderRequest auto = {
@@ -484,10 +429,7 @@ public isolated function returnAsset(string assetTag, ReturnRequest request) ret
                 : "Asset returned in a damaged condition; inspection required.",
             tasks: [{description: "Inspect the asset and quantify the damage."}]
         };
-        Asset|AppError withOrder = createWorkOrder(tag, auto);
-        if withOrder is Asset {
-            return withOrder;
-        }
+        return check createWorkOrder(tag, auto);
     }
     return stored;
 }
@@ -500,10 +442,6 @@ public isolated function loanHistory(string? assetTag = ()) returns LoanRecord[]
     return selectLoans(assetTag);
 }
 
-// ============================================================================
-//  SECTION 5 - COMPONENT MANAGEMENT
-// ============================================================================
-
 # Attaches a new component to an asset.
 #
 # + assetTag - The parent asset.
@@ -513,6 +451,7 @@ public isolated function addComponent(string assetTag, ComponentRequest request)
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(request.name, "name");
     check requireMaxLength(request.name, "name", 200);
+    check requireMaxLength(request.description, "description", 500);
 
     string tag = assetTag.trim();
     Asset current = check selectAsset(tag);
@@ -526,8 +465,6 @@ public isolated function addComponent(string assetTag, ComponentRequest request)
     if compId.length() == 0 {
         compId = generateId("C");
     }
-
-    // Guard against a client re-using an existing component id.
     foreach Component existing in current.components {
         if existing.compId == compId {
             return error ConflictError(
@@ -573,10 +510,6 @@ public isolated function removeComponent(string assetTag, string componentId) re
     return check saveAsset(updated);
 }
 
-// ============================================================================
-//  SECTION 6 - SCHEDULE MANAGEMENT
-// ============================================================================
-
 # Adds a maintenance, servicing, inspection or booking schedule to an asset.
 #
 # + assetTag - The parent asset.
@@ -607,9 +540,6 @@ public isolated function addSchedule(string assetTag, ScheduleRequest request) r
                 string `Schedule '${scheduleId}' already exists on asset '${tag}'.`);
         }
     }
-
-    // A booking must not collide with another booking on the same day; two
-    // groups cannot occupy one meeting room at once.
     if request.'type == BOOKING {
         foreach Schedule existing in current.schedules {
             if existing.'type == BOOKING && existing.dueDate.trim() == request.dueDate.trim() {
@@ -618,6 +548,7 @@ public isolated function addSchedule(string assetTag, ScheduleRequest request) r
                     string `by schedule '${existing.scheduleId}'.`);
             }
         }
+        check checkBookingAgainstLoan(tag, request.dueDate.trim());
     }
 
     Schedule schedule = {
@@ -630,6 +561,60 @@ public isolated function addSchedule(string assetTag, ScheduleRequest request) r
     Asset updated = current.clone();
     updated.schedules.push(schedule);
     return check saveAsset(updated);
+}
+
+# Updates a schedule while keeping its identifier.
+#
+# + assetTag - The parent asset.
+# + scheduleId - The schedule to change.
+# + update - Fields to change; omitted fields retain their values.
+# + return - The updated asset, or an error.
+public isolated function updateSchedule(string assetTag, string scheduleId, ScheduleUpdate update)
+        returns Asset|AppError {
+    check requireNonBlank(assetTag, "assetTag");
+    check requireNonBlank(scheduleId, "scheduleId");
+    Asset current = check selectAsset(assetTag.trim());
+    if current.status == DISPOSED {
+        return error ConflictError("Schedules on a disposed asset cannot be changed.");
+    }
+    int index = -1;
+    foreach int i in 0 ..< current.schedules.length() {
+        if current.schedules[i].scheduleId == scheduleId.trim() {
+            index = i;
+            break;
+        }
+    }
+    if index < 0 {
+        return error NotFoundError(string `No schedule with id '${scheduleId}' on asset '${assetTag}'.`);
+    }
+    Schedule existing = current.schedules[index];
+    Schedule modified = {
+        scheduleId: existing.scheduleId,
+        'type: update?.'type ?: existing.'type,
+        dueDate: (update?.dueDate ?: existing.dueDate).trim(),
+        description: update?.description ?: existing.description
+    };
+    _ = check parseDate(modified.dueDate, "dueDate");
+    check requireMaxLength(modified.description, "description", 500);
+    if modified.'type == BOOKING {
+        foreach Schedule other in current.schedules {
+            if other.scheduleId != existing.scheduleId && other.'type == BOOKING
+                    && other.dueDate.trim() == modified.dueDate {
+                return error ConflictError(string `Asset '${assetTag}' is already booked on ${modified.dueDate}.`);
+            }
+        }
+        check checkBookingAgainstLoan(current.assetTag, modified.dueDate);
+    }
+    current.schedules[index] = modified;
+    return check saveAsset(current);
+}
+
+isolated function checkBookingAgainstLoan(string assetTag, string dueDate) returns ConflictError? {
+    LoanRecord? active = selectActiveLoan(assetTag);
+    if active is LoanRecord && dueDate >= active.loanedOn && dueDate <= active.dueDate {
+        return error ConflictError(string `Asset '${assetTag}' is already issued through ${active.dueDate}.`);
+    }
+    return ();
 }
 
 # Removes a schedule entry from an asset.
@@ -659,10 +644,6 @@ public isolated function removeSchedule(string assetTag, string scheduleId) retu
     return check saveAsset(updated);
 }
 
-// ============================================================================
-//  SECTION 7 - WORK ORDER AND TASK MANAGEMENT
-// ============================================================================
-
 # Converts the task DTOs of a request into stored `Task` values, generating
 # identifiers where the client did not supply them.
 #
@@ -673,6 +654,7 @@ isolated function materialiseTasks(TaskRequest[] requests) returns Task[]|Valida
     map<boolean> seen = {};
     foreach TaskRequest t in requests {
         check requireNonBlank(t.description, "tasks[].description");
+        check requireMaxLength(t.description, "tasks[].description", 500);
         string taskId = (t?.taskId ?: "").trim();
         if taskId.length() == 0 {
             taskId = generateId("T");
@@ -717,9 +699,6 @@ public isolated function createWorkOrder(string assetTag, WorkOrderRequest reque
     }
 
     Task[] tasks = check materialiseTasks(request.tasks);
-
-    // NOTE: the variable is called `workOrder`, not `order` - `order` is a
-    // reserved word in Ballerina because of the `order by` query clause.
     WorkOrder workOrder = {
         orderId: orderId,
         status: request.status,
@@ -729,9 +708,6 @@ public isolated function createWorkOrder(string assetTag, WorkOrderRequest reque
 
     Asset updated = current.clone();
     updated.workOrders.push(workOrder);
-
-    // Raising an open job on an available asset takes it out of circulation so
-    // that nobody loans a resource that is known to be faulty.
     if (workOrder.status == OPEN || workOrder.status == IN_PROGRESS) && updated.status == AVAILABLE {
         updated.status = UNDER_MAINTENANCE;
     }
@@ -753,9 +729,6 @@ public isolated function updateWorkOrder(string assetTag, string orderId, WorkOr
     string tag = assetTag.trim();
     string woId = orderId.trim();
     Asset current = check selectAsset(tag);
-
-    // `-1` is used as the "not found" sentinel so that the variable keeps a
-    // plain `int` type and needs no narrowing after the loop.
     int index = -1;
     foreach int i in 0 ..< current.workOrders.length() {
         if current.workOrders[i].orderId == woId {
@@ -770,6 +743,7 @@ public isolated function updateWorkOrder(string assetTag, string orderId, WorkOr
     WorkOrder existing = current.workOrders[index];
     string newDescription = (update?.description ?: existing.description).trim();
     check requireNonBlank(newDescription, "description");
+    check requireMaxLength(newDescription, "description", 500);
 
     TaskRequest[]? incomingTasks = update?.tasks;
     Task[] newTasks;
@@ -789,8 +763,12 @@ public isolated function updateWorkOrder(string assetTag, string orderId, WorkOr
     Asset updated = current.clone();
     updated.workOrders[index] = modified;
 
-    // Once every job on an asset is closed or cancelled, and the asset was
-    // only under maintenance because of those jobs, put it back into service.
+    if current.status == DISPOSED && (modified.status == OPEN || modified.status == IN_PROGRESS) {
+        return error ConflictError("A work order on a disposed asset cannot be reopened.");
+    }
+    if updated.status == AVAILABLE && hasOpenWorkOrder(updated) {
+        updated.status = UNDER_MAINTENANCE;
+    }
     if updated.status == UNDER_MAINTENANCE && !hasOpenWorkOrder(updated) {
         updated.status = AVAILABLE;
     }

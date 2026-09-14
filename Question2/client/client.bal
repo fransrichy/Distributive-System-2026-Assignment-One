@@ -1,61 +1,12 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 2
-//  Rental Accommodation System - gRPC Client
-//  ---------------------------------------------------------------------------
-//  client.bal
-//  ---------------------------------------------------------------------------
-//  An interactive command line client that exercises every RPC in the
-//  contract, including both streaming styles.
-//
-//  Menu
-//  ----
-//     1  Create Users               (CLIENT STREAMING)
-//     2  Add Property               (unary)
-//     3  Update Property            (unary)
-//     4  Delete Property            (unary)
-//     5  List Available Properties  (SERVER STREAMING)
-//     6  Search Property            (unary)
-//     7  Book Property              (unary)
-//     8  Confirm Booking            (unary)
-//     9  Exit
-//
-//  The client keeps a little session state - the last host, guest and booking
-//  identifiers it saw - and offers them as defaults, so a demonstration can be
-//  driven end to end without copying identifiers around by hand.
-// ============================================================================
-
 import ballerina/grpc;
 import ballerina/io;
 
-// ============================================================================
-//  SECTION 1 - CONFIGURATION AND SESSION STATE
-// ============================================================================
-
-# URL of the rental gRPC server. Override with `Config.toml` or
-# `bal run -- -CserverUrl=http://10.0.0.5:9090`.
 configurable string serverUrl = "http://localhost:9090";
-
-# The host identifier offered as a default by the property menus.
 string sessionHostId = "HOST-001";
-
-# The guest identifier offered as a default by the booking menus.
 string sessionGuestId = "GUEST-001";
-
-# The most recent cart entry, offered as a default by "Confirm Booking".
 string sessionBookingId = "";
-
-# The most recent property the user created or searched for.
 string sessionPropertyId = "";
 
-// ============================================================================
-//  SECTION 2 - TERMINAL PRESENTATION HELPERS
-// ============================================================================
-
-# Repeats a character to build a horizontal rule.
-#
-# + ch - The character to repeat.
-# + count - How many times to repeat it.
-# + return - The resulting line.
 isolated function line(string ch, int count) returns string {
     string result = "";
     foreach int _ in 0 ..< count {
@@ -64,11 +15,6 @@ isolated function line(string ch, int count) returns string {
     return result;
 }
 
-# Pads or truncates a value to an exact column width.
-#
-# + value - The text to lay out.
-# + width - The target column width.
-# + return - A string of exactly `width` characters.
 isolated function fit(string value, int width) returns string {
     if value.length() == width {
         return value;
@@ -83,15 +29,6 @@ isolated function fit(string value, int width) returns string {
     return padded;
 }
 
-# Splits text on a single separator character.
-#
-# Written by hand rather than reaching for a regular expression, because the
-# only thing needed here is a comma split and a hand rolled loop has no
-# dependency on the regexp lang library at all.
-#
-# + text - The text to split.
-# + separator - The character to split on.
-# + return - The parts, including empty ones.
 isolated function splitOn(string text, string:Char separator) returns string[] {
     string[] parts = [];
     string current = "";
@@ -107,16 +44,9 @@ isolated function splitOn(string text, string:Char separator) returns string[] {
     return parts;
 }
 
-# Formats a monetary amount with two decimal places.
-#
-# + amount - The amount in Namibian Dollars.
-# + return - A string such as `NAD 1250.00`.
 isolated function money(float amount) returns string {
     float rounded = (amount * 100.0).round() / 100.0;
     string text = rounded.toString();
-
-    // `toString` on a float drops trailing zeros, so pad the cents back on to
-    // keep the columns aligned.
     int? dot = text.indexOf(".");
     if dot is () {
         return string `NAD ${text}.00`;
@@ -131,9 +61,6 @@ isolated function money(float amount) returns string {
     return string `NAD ${text}`;
 }
 
-# Prints a section heading surrounded by a rule.
-#
-# + title - The heading text.
 function heading(string title) {
     io:println("");
     io:println(line("=", 92));
@@ -141,44 +68,25 @@ function heading(string title) {
     io:println(line("=", 92));
 }
 
-# Prints a failure in a consistent, obvious format.
-#
-# + message - The failure text.
 function printError(string message) {
     io:println("");
     io:println("  [FAILED] " + message);
 }
 
-# Prints a success notice in a consistent format.
-#
-# + message - The success text.
 function printOk(string message) {
     io:println("");
     io:println("  [OK] " + message);
 }
 
-# Reads a line from the terminal and trims surrounding whitespace.
-#
-# + prompt - The prompt to display.
-# + return - The trimmed input.
 function ask(string prompt) returns string {
     return io:readln(prompt).trim();
 }
 
-# Reads a line, falling back to a default when the user just presses Enter.
-#
-# + prompt - The prompt to display, without the default.
-# + fallback - The value to use for empty input.
-# + return - The user's answer, or `fallback`.
 function askOr(string prompt, string fallback) returns string {
     string answer = ask(string `${prompt} [${fallback}]: `);
     return answer.length() > 0 ? answer : fallback;
 }
 
-# Reads a line and rejects a blank answer, re-prompting until one is given.
-#
-# + prompt - The prompt to display.
-# + return - The non-blank trimmed input.
 function askRequired(string prompt) returns string {
     while true {
         string value = ask(prompt);
@@ -189,11 +97,6 @@ function askRequired(string prompt) returns string {
     }
 }
 
-# Reads a floating point number, re-prompting until the input parses.
-#
-# + prompt - The prompt to display.
-# + fallback - The value to use for empty input.
-# + return - The parsed number.
 function askFloat(string prompt, float fallback) returns float {
     while true {
         string raw = ask(string `${prompt} [${fallback}]: `);
@@ -208,11 +111,6 @@ function askFloat(string prompt, float fallback) returns float {
     }
 }
 
-# Reads a whole number, re-prompting until the input parses.
-#
-# + prompt - The prompt to display.
-# + fallback - The value to use for empty input.
-# + return - The parsed number.
 function askInt(string prompt, int fallback) returns int {
     while true {
         string raw = ask(string `${prompt} [${fallback}]: `);
@@ -227,30 +125,19 @@ function askInt(string prompt, int fallback) returns int {
     }
 }
 
-// ============================================================================
-//  SECTION 3 - RENDERING
-// ============================================================================
-
-# Prints the header row of the property table.
 function printPropertyHeader() {
     io:println("  " + fit("PROPERTY ID", 13) + fit("NAME", 30) + fit("LOCATION", 14) +
-        fit("TYPE", 12) + fit("PRICE/NIGHT", 15) + fit("SLEEPS", 7) + "STATUS");
+            fit("TYPE", 12) + fit("PRICE/NIGHT", 15) + fit("SLEEPS", 7) + "STATUS");
     io:println("  " + line("-", 100));
 }
 
-# Prints one property as a table row.
-#
-# + property - The listing to display.
 function printPropertyRow(Property property) {
     io:println("  " + fit(property.propertyId, 13) + fit(property.name, 30) +
-        fit(property.location, 14) + fit(property.propertyType, 12) +
-        fit(money(property.pricePerNight), 15) +
-        fit(property.maxGuests.toString(), 7) + property.status);
+            fit(property.location, 14) + fit(property.propertyType, 12) +
+            fit(money(property.pricePerNight), 15) +
+            fit(property.maxGuests.toString(), 7) + property.status);
 }
 
-# Prints the full detail of one property.
-#
-# + property - The listing to display.
 function printPropertyDetail(Property property) {
     io:println("");
     io:println("  Property id  : " + property.propertyId);
@@ -263,12 +150,9 @@ function printPropertyDetail(Property property) {
     io:println("  Status       : " + property.status);
     io:println("  Description  : " + property.description);
     io:println("  Amenities    : " +
-        (property.amenities.length() == 0 ? "(none listed)" : string:'join(", ", ...property.amenities)));
+            (property.amenities.length() == 0 ? "(none listed)" : string:'join(", ", ...property.amenities)));
 }
 
-# Prints a confirmed booking.
-#
-# + booking - The booking to display.
 function printBooking(Booking booking) {
     io:println("");
     io:println("  Booking id   : " + booking.bookingId);
@@ -284,22 +168,6 @@ function printBooking(Booking booking) {
     }
 }
 
-// ============================================================================
-//  SECTION 4 - MENU ACTIONS
-// ============================================================================
-
-// ---------------------------------------------------------------------------
-//  4.1  Create Users - CLIENT-SIDE STREAMING
-// ---------------------------------------------------------------------------
-
-# Collects several user profiles and pushes them to the server over a single
-# client-side stream, then reads the one summary the server sends back.
-#
-# This is the client half of the client-streaming pattern: many requests, one
-# response, one HTTP/2 stream.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the stream itself fails.
 function actionCreateUsers(RentalServiceClient ep) returns error? {
     heading("CREATE USERS  (client-side streaming)");
     io:println("  Profiles are collected first, then streamed to the server in one call.");
@@ -344,8 +212,6 @@ function actionCreateUsers(RentalServiceClient ep) returns error? {
         printError("No profiles were entered, so nothing was streamed.");
         return;
     }
-
-    // ---- Open the stream ------------------------------------------------
     Create_usersStreamingClient streamingClient = check ep->create_users();
 
     io:println("");
@@ -355,12 +221,8 @@ function actionCreateUsers(RentalServiceClient ep) returns error? {
         check streamingClient->sendCreateUserRequest(profile);
         io:println(string `    -> sent [${i + 1}] ${profile.name} (${profile.role})`);
     }
-
-    // ---- Half-close: no more messages will be sent ----------------------
     check streamingClient->complete();
     io:println("  Stream closed; waiting for the server summary...");
-
-    // ---- Read the single response --------------------------------------
     CreateUsersSummary? summary = check streamingClient->receiveCreateUsersSummary();
     if summary is () {
         printError("The server closed the stream without sending a summary.");
@@ -378,7 +240,6 @@ function actionCreateUsers(RentalServiceClient ep) returns error? {
         io:println("  New identifiers:");
         foreach string id in summary.createdIds {
             io:println("    + " + id);
-            // Remember the newest ids so later menus can default to them.
             if id.startsWith("HOST-") {
                 sessionHostId = id;
             } else if id.startsWith("GUEST-") {
@@ -394,14 +255,6 @@ function actionCreateUsers(RentalServiceClient ep) returns error? {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  4.2  Add Property
-// ---------------------------------------------------------------------------
-
-# Registers a new listing.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionAddProperty(RentalServiceClient ep) returns error? {
     heading("ADD PROPERTY  (unary)");
 
@@ -448,14 +301,6 @@ function actionAddProperty(RentalServiceClient ep) returns error? {
     printPropertyDetail(response.property);
 }
 
-// ---------------------------------------------------------------------------
-//  4.3  Update Property
-// ---------------------------------------------------------------------------
-
-# Patches an existing listing. Blank answers leave a field unchanged.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionUpdateProperty(RentalServiceClient ep) returns error? {
     heading("UPDATE PROPERTY  (unary)");
     io:println("  Press Enter on any field to leave it unchanged.");
@@ -512,14 +357,6 @@ function actionUpdateProperty(RentalServiceClient ep) returns error? {
     printPropertyDetail(response.property);
 }
 
-// ---------------------------------------------------------------------------
-//  4.4  Delete Property
-// ---------------------------------------------------------------------------
-
-# Removes a listing and prints what the host still has in that region.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionDeleteProperty(RentalServiceClient ep) returns error? {
     heading("DELETE PROPERTY  (unary)");
 
@@ -543,9 +380,9 @@ function actionDeleteProperty(RentalServiceClient ep) returns error? {
         printOk(response.message);
     }
 
-    heading(string `REMAINING LISTINGS FOR ${hostId} IN ${response.region}`);
+    heading(string `AVAILABLE LISTINGS IN ${response.region}`);
     if response.remainingProperties.length() == 0 {
-        io:println("  This host has no further listings in that region.");
+        io:println("  No available listings remain in that region.");
         return;
     }
     printPropertyHeader();
@@ -556,19 +393,6 @@ function actionDeleteProperty(RentalServiceClient ep) returns error? {
     io:println(string `  ${response.remainingProperties.length()} listing(s).`);
 }
 
-// ---------------------------------------------------------------------------
-//  4.5  List Available Properties - SERVER-SIDE STREAMING
-// ---------------------------------------------------------------------------
-
-# Asks the server for available listings and consumes the reply as a stream,
-# printing each listing the moment it arrives rather than waiting for the
-# whole result set.
-#
-# This is the client half of the server-streaming pattern: one request, many
-# responses, one HTTP/2 stream.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the stream fails.
 function actionListAvailable(RentalServiceClient ep) returns error? {
     heading("LIST AVAILABLE PROPERTIES  (server-side streaming)");
     io:println("  Leave a filter blank to ignore it.");
@@ -602,18 +426,11 @@ function actionListAvailable(RentalServiceClient ep) returns error? {
         printPropertyRow(item.value);
         item = resultStream.next();
     }
-
-    // A `grpc:Error` here means the stream was broken mid-flight, which is
-    // different from an empty result set and worth reporting distinctly.
     if item is grpc:Error {
         io:println("  " + line("-", 100));
         printError("The stream was interrupted: " + item.message());
         return;
     }
-
-    // The stream is exhausted; closing releases the underlying HTTP/2 stream.
-    // A wildcard cannot be used here because `error?` is not a subtype of
-    // `any`, so the outcome is bound and reported rather than discarded.
     error? closeOutcome = resultStream.close();
     if closeOutcome is error {
         io:println("  (the stream reported '" + closeOutcome.message() + "' while closing)");
@@ -627,14 +444,6 @@ function actionListAvailable(RentalServiceClient ep) returns error? {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  4.6  Search Property
-// ---------------------------------------------------------------------------
-
-# Looks one listing up by its identifier.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionSearchProperty(RentalServiceClient ep) returns error? {
     heading("SEARCH PROPERTY  (unary)");
 
@@ -655,14 +464,6 @@ function actionSearchProperty(RentalServiceClient ep) returns error? {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  4.7  Book Property
-// ---------------------------------------------------------------------------
-
-# Places a requested stay into the guest's temporary booking cart.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionBookProperty(RentalServiceClient ep) returns error? {
     heading("BOOK PROPERTY  (unary - adds to the temporary cart)");
     io:println("  Dates are ISO-8601 (YYYY-MM-DD). Check-out must be after check-in.");
@@ -700,14 +501,6 @@ function actionBookProperty(RentalServiceClient ep) returns error? {
     io:println("  Nothing is reserved yet. Choose option 8 to confirm the booking.");
 }
 
-// ---------------------------------------------------------------------------
-//  4.8  Confirm Booking
-// ---------------------------------------------------------------------------
-
-# Finalises a cart entry into a real reservation.
-#
-# + ep - The connected gRPC stub.
-# + return - A `grpc:Error` when the call fails at the transport level.
 function actionConfirmBooking(RentalServiceClient ep) returns error? {
     heading("CONFIRM BOOKING  (unary)");
 
@@ -733,11 +526,6 @@ function actionConfirmBooking(RentalServiceClient ep) returns error? {
     sessionBookingId = "";
 }
 
-// ============================================================================
-//  SECTION 5 - MENU LOOP
-// ============================================================================
-
-# Prints the main menu.
 function printMenu() {
     io:println("");
     io:println(line("=", 66));
@@ -754,14 +542,10 @@ function printMenu() {
     io:println("    9.  Exit");
     io:println(line("-", 66));
     io:println(string `   Session: host=${sessionHostId}  guest=${sessionGuestId}` +
-        (sessionBookingId.length() > 0 ? string `  cart=${sessionBookingId}` : ""));
+            (sessionBookingId.length() > 0 ? string `  cart=${sessionBookingId}` : ""));
     io:println(line("=", 66));
 }
 
-# Program entry point: connects the stub, then runs the menu loop until the
-# user chooses to exit.
-#
-# + return - An error only when the stub itself cannot be constructed.
 public function main() returns error? {
     io:println(line("=", 66));
     io:println("   DSA612S - RENTAL ACCOMMODATION SYSTEM");
@@ -776,10 +560,6 @@ public function main() returns error? {
         return;
     }
     RentalServiceClient ep = connection;
-
-    // A cheap unary call doubles as a connectivity probe: if the server is
-    // not listening, this fails immediately with a clear message rather than
-    // leaving the user to discover it on their first real operation.
     SearchPropertyResponse|grpc:Error probe = ep->search_property({propertyId: "PROP-001"});
     if probe is grpc:Error {
         printError(string `The server at ${serverUrl} did not answer: ${probe.message()}`);
@@ -791,9 +571,6 @@ public function main() returns error? {
     while true {
         printMenu();
         string choice = ask("   Select an option [1-9]: ");
-
-        // Each action is executed defensively: a server side or transport
-        // failure is reported and the menu is shown again.
         error? outcome = ();
         match choice {
             "1" => {

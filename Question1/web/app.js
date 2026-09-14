@@ -1,39 +1,24 @@
-/* ==========================================================================
-   DSA612S - Assignment 1 - Question 1 (Bonus)
-   Distributed Library and Resource Management System - Web Dashboard
-   --------------------------------------------------------------------------
-   Plain ES2020. No frameworks, no bundler, no dependencies.
-
-   Contents
-     1.  Configuration and application state
-     2.  Tiny DOM helpers
-     3.  Toast notifications
-     4.  Theme handling (dark mode)
-     5.  REST API client
-     6.  Data loading
-     7.  Rendering: tiles, assets, overdue, work orders, loans
-     8.  Asset detail modal
-     9.  Generic form modal (loan, return, schedule, work order, new asset)
-     10. Confirmation modal
-     11. Actions (loan, return, schedule, work order, delete)
-     12. Filtering, sorting and tabs
-     13. Bootstrap
-   ========================================================================== */
-
 'use strict';
 
-/* ==========================================================================
-   1. CONFIGURATION AND APPLICATION STATE
-   ========================================================================== */
+function resolveApiBase() {
+    const queryBase = new URLSearchParams(window.location.search).get('apiBase');
+    for (const candidate of [queryBase, localStorage.getItem('dsa.apiBase')]) {
+        if (!candidate) continue;
+        try {
+            const url = new URL(candidate);
+            if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) {
+                return url.origin + url.pathname.replace(/\/+$/, '');
+            }
+        } catch (_) {
+            // Ignore an invalid override and use the next configured URL.
+        }
+    }
+    return 'http://localhost:8080';
+}
 
-/**
- * Base URL of the Ballerina REST service.
- * Override without editing this file by running the following once in the
- * browser console:  localStorage.setItem('dsa.apiBase', 'http://host:port')
- */
-const API_BASE = localStorage.getItem('dsa.apiBase') || 'http://localhost:8080';
+const API_BASE = resolveApiBase();
 
-/** Everything the UI needs to render, kept in one place. */
+// Everything the UI needs to render, kept in one place.
 const state = {
     assets: [],
     overdue: [],
@@ -43,12 +28,10 @@ const state = {
     summary: {},
     filters: {q: '', institution: '', site: '', status: ''},
     sort: {key: 'assetTag', dir: 'asc'},
-    // `null` rather than `false` so the very first `setConnection` call always
-    // repaints the indicator away from its "Connecting..." placeholder.
     online: null
 };
 
-/** Human readable labels for the status enum. */
+// Human readable labels for the status enum.
 const STATUS_LABEL = {
     AVAILABLE: 'Available',
     LOANED_OUT: 'Loaned out',
@@ -57,20 +40,10 @@ const STATUS_LABEL = {
     DISPOSED: 'Disposed'
 };
 
-/* ==========================================================================
-   2. TINY DOM HELPERS
-   ========================================================================== */
-
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => Array.from(scope.querySelectorAll(selector));
 
-/**
- * Escapes text before it is placed into innerHTML. Every value that reaches
- * the DOM through a template literal passes through here, which keeps the
- * dashboard safe from injected markup in asset names or descriptions.
- * @param {*} value raw value
- * @returns {string} HTML-safe text
- */
+// Escape values before inserting them into HTML templates.
 function esc(value) {
     if (value === null || value === undefined) {
         return '';
@@ -83,19 +56,14 @@ function esc(value) {
         .replace(/'/g, '&#39;');
 }
 
-/**
- * Builds a coloured status pill.
- * @param {string} value enum value such as AVAILABLE or OPEN
- * @param {string} [label] optional display text
- * @returns {string} HTML
- */
+// Builds a coloured status pill.
 function pill(value, label) {
     const key = String(value || '').toLowerCase();
     const text = label || STATUS_LABEL[value] || value || '-';
     return `<span class="pill pill--${esc(key)}">${esc(text)}</span>`;
 }
 
-/** Debounces a function so typing in the search box does not spam the DOM. */
+// Debounces a function so typing in the search box does not spam the DOM.
 function debounce(fn, wait) {
     let timer = null;
     return (...args) => {
@@ -104,30 +72,21 @@ function debounce(fn, wait) {
     };
 }
 
-/** Today's date as YYYY-MM-DD, for date input defaults and minimums. */
+// Today's date as YYYY-MM-DD, for date input defaults and minimums.
 function todayIso() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** Adds whole days to an ISO date string. */
+// Adds whole days to an ISO date string.
 function addDaysIso(iso, days) {
     const date = new Date(`${iso}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().slice(0, 10);
 }
 
-/* ==========================================================================
-   3. TOAST NOTIFICATIONS
-   ========================================================================== */
-
-/**
- * Shows a transient notification in the bottom right corner.
- * @param {string} title short heading
- * @param {string} [text] optional detail line
- * @param {'success'|'error'|'warn'|'info'} [kind] visual treatment
- */
+// Shows a transient notification in the bottom right corner.
 function toast(title, text = '', kind = 'info') {
     const host = $('#toasts');
     const el = document.createElement('div');
@@ -146,17 +105,13 @@ function toast(title, text = '', kind = 'info') {
     }, life);
 }
 
-/* ==========================================================================
-   4. THEME HANDLING
-   ========================================================================== */
-
-/** Applies a theme and remembers the choice. */
+// Applies a theme and remembers the choice.
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('dsa.theme', theme);
 }
 
-/** Restores the saved theme, falling back to the operating system setting. */
+// Restores the saved theme, falling back to the operating system setting.
 function initTheme() {
     const saved = localStorage.getItem('dsa.theme');
     if (saved === 'dark' || saved === 'light') {
@@ -168,21 +123,7 @@ function initTheme() {
     applyTheme(prefersDark ? 'dark' : 'light');
 }
 
-/* ==========================================================================
-   5. REST API CLIENT
-   ========================================================================== */
-
-/**
- * Performs one API call and normalises failures.
- *
- * The Ballerina service answers every failure with the same JSON envelope
- * ({timestamp, status, error, message, path}), so a non-2xx response is
- * unpacked here and re-thrown as an Error carrying the server's own message.
- *
- * @param {string} path request path beginning with '/'
- * @param {object} [options] fetch options; `body` may be a plain object
- * @returns {Promise<*>} the decoded response body
- */
+// Performs one API call and normalises failures.
 async function api(path, options = {}) {
     const config = {
         method: options.method || 'GET',
@@ -226,10 +167,10 @@ async function api(path, options = {}) {
     return payload;
 }
 
-/** Percent-encodes a value for use inside a URI path segment. */
+// Percent-encodes a value for use inside a URI path segment.
 const seg = (value) => encodeURIComponent(String(value));
 
-/** Updates the connection pill in the app bar. */
+// Updates the connection pill in the app bar.
 function setConnection(online) {
     if (state.online === online) {
         return;
@@ -241,11 +182,7 @@ function setConnection(online) {
     $('#connText').textContent = online ? 'API online' : 'API offline';
 }
 
-/* ==========================================================================
-   6. DATA LOADING
-   ========================================================================== */
-
-/** Loads every data set the dashboard needs and repaints the whole page. */
+// Loads every data set the dashboard needs and repaints the whole page.
 async function loadAll() {
     try {
         const [assets, overdue, loans, institutions, sites, summary] = await Promise.all([
@@ -270,16 +207,14 @@ async function loadAll() {
         renderOverdue();
         renderWorkOrders();
         renderLoans();
+        return true;
     } catch (error) {
         toast('Could not load data', error.message, 'error');
+        return false;
     }
 }
 
-/* ==========================================================================
-   7. RENDERING
-   ========================================================================== */
-
-/** Repaints the five summary tiles. */
+// Repaints the five summary tiles.
 function renderTiles() {
     const byStatus = state.summary.byStatus || {};
     const out = (byStatus.LOANED_OUT || 0) + (byStatus.OCCUPIED || 0);
@@ -300,7 +235,7 @@ function renderTiles() {
     badge.dataset.zero = state.overdue.length === 0 ? 'true' : 'false';
 }
 
-/** Rebuilds the institution and site dropdowns, preserving the selection. */
+// Rebuilds the institution and site dropdowns, preserving the selection.
 function renderFilters() {
     const fillSelect = (select, values, placeholder) => {
         const current = select.value;
@@ -312,9 +247,11 @@ function renderFilters() {
     };
     fillSelect($('#filterInstitution'), state.institutions, 'All institutions');
     fillSelect($('#filterSite'), state.sites, 'All campuses / sites');
+    state.filters.institution = $('#filterInstitution').value;
+    state.filters.site = $('#filterSite').value;
 }
 
-/** Applies the current filters and sort order to the asset list. */
+// Applies the current filters and sort order to the asset list.
 function visibleAssets() {
     const {q, institution, site, status} = state.filters;
     const needle = q.trim().toLowerCase();
@@ -340,7 +277,7 @@ function visibleAssets() {
     return rows;
 }
 
-/** Repaints the main asset table. */
+// Repaints the main asset table.
 function renderAssets() {
     const rows = visibleAssets();
     const body = $('#assetTableBody');
@@ -373,8 +310,6 @@ function renderAssets() {
     $('#assetEmpty').hidden = rows.length > 0;
     $('#assetCount').textContent =
         `${rows.length} of ${state.assets.length} asset${state.assets.length === 1 ? '' : 's'}`;
-
-    // Reflect the active sort in the header.
     $$('#assetTable th.sortable').forEach((th) => {
         th.classList.remove('sort-asc', 'sort-desc');
         if (th.dataset.sort === state.sort.key) {
@@ -383,7 +318,7 @@ function renderAssets() {
     });
 }
 
-/** Repaints the overdue maintenance table. */
+// Repaints the overdue maintenance table.
 function renderOverdue() {
     const body = $('#overdueTableBody');
     body.innerHTML = state.overdue.map((row) => `
@@ -398,6 +333,8 @@ function renderOverdue() {
             <td class="col-actions">
                 <span class="row-actions">
                     <button class="btn btn--sm" data-workorder="${esc(row.assetTag)}">Raise W/O</button>
+                    <button class="btn btn--sm" data-edit-schedule="${esc(row.assetTag)}"
+                            data-schedule-id="${esc(row.scheduleId)}">Edit</button>
                     <button class="btn btn--sm btn--ghost"
                             data-del-schedule="${esc(row.assetTag)}"
                             data-schedule-id="${esc(row.scheduleId)}">Clear</button>
@@ -408,7 +345,7 @@ function renderOverdue() {
     $('#overdueEmpty').hidden = state.overdue.length > 0;
 }
 
-/** Flattens every work order of every asset into one table. */
+// Flattens every work order of every asset into one table.
 function renderWorkOrders() {
     const rows = [];
     state.assets.forEach((a) => {
@@ -442,7 +379,7 @@ function renderWorkOrders() {
     $('#workOrderEmpty').hidden = rows.length > 0;
 }
 
-/** Repaints the loan history table. */
+// Repaints the loan history table.
 function renderLoans() {
     const body = $('#loanTableBody');
     body.innerHTML = state.loans.map((l) => `
@@ -459,11 +396,7 @@ function renderLoans() {
     $('#loanEmpty').hidden = state.loans.length > 0;
 }
 
-/* ==========================================================================
-   8. ASSET DETAIL MODAL
-   ========================================================================== */
-
-/** Opens the read-only detail view for one asset. */
+// Opens the read-only detail view for one asset.
 function openDetail(assetTag) {
     const asset = state.assets.find((a) => a.assetTag === assetTag);
     if (!asset) {
@@ -521,6 +454,9 @@ function openDetail(assetTag) {
                                 <div class="detail-entry__meta">${esc(s.scheduleId)} &mdash; ${esc(s.description || 'No description')}</div>
                             </div>
                             <div class="detail-entry__actions">
+                                <button class="btn btn--sm"
+                                        data-edit-schedule="${esc(asset.assetTag)}"
+                                        data-schedule-id="${esc(s.scheduleId)}">Edit</button>
                                 <button class="btn btn--sm btn--ghost"
                                         data-del-schedule="${esc(asset.assetTag)}"
                                         data-schedule-id="${esc(s.scheduleId)}">Remove</button>
@@ -560,20 +496,16 @@ function openDetail(assetTag) {
     openModal('#modalDetail');
 }
 
-/* ==========================================================================
-   9. GENERIC FORM MODAL
-   ========================================================================== */
-
-/** Currently registered submit handler for the generic form modal. */
+// Currently registered submit handler for the generic form modal.
 let formHandler = null;
 
-/** Shows a modal. */
+// Shows a modal.
 function openModal(selector) {
     $(selector).hidden = false;
     document.body.style.overflow = 'hidden';
 }
 
-/** Hides a modal. */
+// Hides a modal.
 function closeModal(selector) {
     $(selector).hidden = true;
     if ($$('.modal:not([hidden])').length === 0) {
@@ -581,13 +513,7 @@ function closeModal(selector) {
     }
 }
 
-/**
- * Opens the shared form modal.
- * @param {string} title heading text
- * @param {string} bodyHtml the form fields
- * @param {string} submitLabel text of the primary button
- * @param {(data: Record<string,*>) => Promise<void>} onSubmit submit handler
- */
+// Opens the shared form modal.
 function openForm(title, bodyHtml, submitLabel, onSubmit) {
     $('#formTitle').textContent = title;
     $('#formBody').innerHTML = bodyHtml;
@@ -601,7 +527,7 @@ function openForm(title, bodyHtml, submitLabel, onSubmit) {
     }
 }
 
-/** Collects every named control inside the form modal into a plain object. */
+// Collects every named control inside the form modal into a plain object.
 function readForm() {
     const data = {};
     $$('#formBody [name]').forEach((field) => {
@@ -614,13 +540,9 @@ function readForm() {
     return data;
 }
 
-/* ==========================================================================
-   10. CONFIRMATION MODAL
-   ========================================================================== */
-
 let confirmHandler = null;
 
-/** Asks the user to confirm a destructive action. */
+// Asks the user to confirm a destructive action.
 function confirmAction(title, message, onYes) {
     $('#confirmTitle').textContent = title;
     $('#confirmMessage').textContent = message;
@@ -628,11 +550,7 @@ function confirmAction(title, message, onYes) {
     openModal('#modalConfirm');
 }
 
-/* ==========================================================================
-   11. ACTIONS
-   ========================================================================== */
-
-/** Opens the loan form for one asset. */
+// Opens the loan form for one asset.
 function actionLoan(assetTag) {
     const asset = state.assets.find((a) => a.assetTag === assetTag);
     const defaultDue = addDaysIso(todayIso(), 14);
@@ -669,7 +587,7 @@ function actionLoan(assetTag) {
     });
 }
 
-/** Opens the return form for one asset. */
+// Opens the return form for one asset.
 function actionReturn(assetTag) {
     openForm(`Return ${assetTag}`, `
         <div class="form-row">
@@ -692,46 +610,53 @@ function actionReturn(assetTag) {
     });
 }
 
-/** Opens the "add schedule" form for one asset. */
-function actionSchedule(assetTag) {
-    openForm(`Add a schedule to ${assetTag}`, `
+// Opens the "add schedule" form for one asset.
+function actionSchedule(assetTag, scheduleId = null) {
+    const asset = state.assets.find((item) => item.assetTag === assetTag);
+    const schedule = scheduleId && (asset?.schedules || []).find((item) => item.scheduleId === scheduleId);
+    if (scheduleId && !schedule) {
+        toast('Schedule not found', 'Refresh the dashboard and try again.', 'error');
+        return;
+    }
+    closeModal('#modalDetail');
+    openForm(`${schedule ? 'Edit' : 'Add'} a schedule ${schedule ? 'on' : 'to'} ${assetTag}`, `
         <div class="form-grid">
             <div class="form-row">
                 <label for="f-type">Type *</label>
                 <select id="f-type" name="type">
-                    <option value="MAINTENANCE">Maintenance</option>
-                    <option value="SERVICING">Servicing</option>
-                    <option value="INSPECTION">Inspection</option>
-                    <option value="BOOKING">Booking</option>
+                    ${['MAINTENANCE', 'SERVICING', 'INSPECTION', 'BOOKING'].map((type) =>
+                        `<option value="${type}" ${type === (schedule?.type || 'MAINTENANCE') ? 'selected' : ''}>${type}</option>`).join('')}
                 </select>
             </div>
             <div class="form-row">
                 <label for="f-due">Due date *</label>
-                <input type="date" id="f-due" name="dueDate" value="${addDaysIso(todayIso(), 30)}" required>
+                <input type="date" id="f-due" name="dueDate" value="${esc(schedule?.dueDate || addDaysIso(todayIso(), 30))}" required>
             </div>
         </div>
         <div class="form-row">
             <label for="f-sdesc">Description</label>
             <textarea id="f-sdesc" name="description"
-                      placeholder="e.g. Quarterly calibration and nozzle cleaning"></textarea>
+                      placeholder="e.g. Quarterly calibration and nozzle cleaning">${esc(schedule?.description || '')}</textarea>
         </div>
         <div class="form-row">
             <label for="f-sid">Schedule id</label>
-            <input type="text" id="f-sid" name="scheduleId" placeholder="Leave blank to auto-generate">
-        </div>`, 'Add schedule', async (data) => {
+            <input type="text" id="f-sid" name="scheduleId" placeholder="Leave blank to auto-generate"
+                   value="${esc(scheduleId || '')}" ${schedule ? 'readonly' : ''}>
+        </div>`, schedule ? 'Save changes' : 'Add schedule', async (data) => {
         if (!data.dueDate) {
             throw new Error('A due date is required.');
         }
         const body = {type: data.type, dueDate: data.dueDate, description: data.description || ''};
-        if (data.scheduleId) {
+        if (!schedule && data.scheduleId) {
             body.scheduleId = data.scheduleId;
         }
-        await api(`/assets/${seg(assetTag)}/schedules`, {method: 'POST', body});
-        toast('Schedule added', `${data.type} scheduled for ${data.dueDate}.`, 'success');
+        const path = `/assets/${seg(assetTag)}/schedules` + (schedule ? `/${seg(scheduleId)}` : '');
+        await api(path, {method: schedule ? 'PUT' : 'POST', body});
+        toast(schedule ? 'Schedule updated' : 'Schedule added', `${data.type} scheduled for ${data.dueDate}.`, 'success');
     });
 }
 
-/** Opens the "create work order" form for one asset. */
+// Opens the "create work order" form for one asset.
 function actionWorkOrder(assetTag) {
     openForm(`Open a work order on ${assetTag}`, `
         <div class="form-row">
@@ -770,8 +695,6 @@ function actionWorkOrder(assetTag) {
         });
         toast('Work order opened', `A ${data.status} job was logged against ${assetTag}.`, 'success');
     });
-
-    // Wire the "add another task" button for this form instance.
     $('#btnAddTask').addEventListener('click', () => {
         const row = document.createElement('div');
         row.className = 'task-row';
@@ -784,7 +707,7 @@ function actionWorkOrder(assetTag) {
     });
 }
 
-/** Opens the "create asset" form. */
+// Opens the "create asset" form.
 function actionNewAsset() {
     openForm('Register a new asset', `
         <div class="form-grid">
@@ -855,41 +778,29 @@ function actionNewAsset() {
     });
 }
 
-/* ==========================================================================
-   12. FILTERING, SORTING AND TABS
-   ========================================================================== */
-
-/** Switches the visible tab panel. */
+// Switches the visible tab panel.
 function switchView(view) {
     $$('.tab').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.view === view));
     $$('.view').forEach((panel) => panel.classList.toggle('is-active', panel.id === `view-${view}`));
 }
 
-/* ==========================================================================
-   13. BOOTSTRAP
-   ========================================================================== */
-
-/** Wires every event listener exactly once. */
+// Wires every event listener exactly once.
 function wireEvents() {
-    // --- App bar -------------------------------------------------------
     $('#btnTheme').addEventListener('click', () => {
         const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
         applyTheme(next);
     });
 
     $('#btnRefresh').addEventListener('click', async () => {
-        await loadAll();
-        toast('Refreshed', 'The dashboard is showing the latest data.', 'success');
+        if (await loadAll()) {
+            toast('Refreshed', 'The dashboard is showing the latest data.', 'success');
+        }
     });
 
     $('#btnNewAsset').addEventListener('click', actionNewAsset);
-
-    // --- Tabs ----------------------------------------------------------
     $$('.tab').forEach((tab) => {
         tab.addEventListener('click', () => switchView(tab.dataset.view));
     });
-
-    // --- Filters -------------------------------------------------------
     $('#searchInput').addEventListener('input', debounce((event) => {
         state.filters.q = event.target.value;
         renderAssets();
@@ -918,8 +829,6 @@ function wireEvents() {
         $('#filterStatus').value = '';
         renderAssets();
     });
-
-    // --- Sorting -------------------------------------------------------
     $$('#assetTable th.sortable').forEach((th) => {
         th.addEventListener('click', () => {
             const key = th.dataset.sort;
@@ -929,8 +838,6 @@ function wireEvents() {
             renderAssets();
         });
     });
-
-    // --- Modal plumbing ------------------------------------------------
     $$('[data-close]').forEach((el) => {
         el.addEventListener('click', () => {
             const modal = el.closest('.modal');
@@ -978,13 +885,9 @@ function wireEvents() {
             }
         }
     });
-
-    // --- Delegated row actions ----------------------------------------
-    // One listener on `document` covers every dynamically rendered button,
-    // so no listener has to be re-attached after a repaint.
     document.addEventListener('click', (event) => {
         const target = event.target.closest('[data-detail], [data-loan], [data-return],' +
-            '[data-schedule], [data-workorder], [data-delete], [data-del-schedule],' +
+            '[data-schedule], [data-edit-schedule], [data-workorder], [data-delete], [data-del-schedule],' +
             '[data-del-component], [data-del-wo], [data-close-wo]');
         if (!target) {
             return;
@@ -999,6 +902,8 @@ function wireEvents() {
             actionReturn(d.return);
         } else if (d.schedule !== undefined) {
             actionSchedule(d.schedule);
+        } else if (d.editSchedule !== undefined) {
+            actionSchedule(d.editSchedule, d.scheduleId);
         } else if (d.workorder !== undefined) {
             actionWorkOrder(d.workorder);
         } else if (d.delete !== undefined) {
@@ -1047,7 +952,7 @@ function wireEvents() {
     });
 }
 
-/** Application entry point. */
+// Application entry point.
 async function start() {
     initTheme();
     $('#apiBadge').innerHTML = `API: <code>${esc(API_BASE)}</code>`;
@@ -1062,8 +967,6 @@ async function start() {
     }
 
     await loadAll();
-
-    // Keep the dashboard fresh without the user having to click refresh.
     setInterval(loadAll, 30000);
 }
 

@@ -1,29 +1,6 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  main.bal
-//  ---------------------------------------------------------------------------
-//  The *transport layer*. This file is deliberately thin: each resource
-//  function does three things and nothing else.
-//
-//     1. Hand the request parameters to the business layer in `services.bal`.
-//     2. Wrap a success in the correct typed HTTP response record.
-//     3. Delegate any failure to `toErrorResponse`, which selects between
-//        400 / 404 / 409 / 500 based on the *type* of the error.
-//
-//  Because every resource function declares its full return union, the
-//  OpenAPI contract that `bal openapi -i main.bal` generates is exact, and a
-//  reader can see the complete set of outcomes at a glance.
-// ============================================================================
-
 import ballerina/http;
 import ballerina/io;
 import ballerina/log;
-
-// ============================================================================
-//  SECTION 1 - CONFIGURATION AND BOOTSTRAP
-// ============================================================================
 
 # TCP port the API listens on. Override at run time with
 # `bal run -- -CservicePort=9090` or via `Config.toml`.
@@ -57,10 +34,6 @@ public function main() {
     log:printInfo("Library REST API started", port = servicePort, seeded = seededAssets);
 }
 
-// ============================================================================
-//  SECTION 2 - THE API SERVICE
-// ============================================================================
-
 # The complete Library and Resource Management API.
 #
 # CORS is enabled for every origin so that the bonus HTML/CSS/JavaScript
@@ -76,10 +49,6 @@ public function main() {
     }
 }
 service / on libraryListener {
-
-    // ------------------------------------------------------------------
-    //  2.1  Health and dashboard summary
-    // ------------------------------------------------------------------
 
     # Liveness probe used by the CLI client and the web dashboard to confirm
     # the API is reachable before showing the menu.
@@ -101,10 +70,6 @@ service / on libraryListener {
     resource function get summary() returns map<json> {
         return dashboardSummary();
     }
-
-    // ------------------------------------------------------------------
-    //  2.2  Asset CRUD
-    // ------------------------------------------------------------------
 
     # `POST /assets` - creates a new asset.
     #
@@ -194,10 +159,6 @@ service / on libraryListener {
         };
     }
 
-    // ------------------------------------------------------------------
-    //  2.3  Institution and campus views
-    // ------------------------------------------------------------------
-
     # `GET /assets/institution/{institution}` - every asset owned by one
     # institution. Remember to percent-encode names that contain spaces.
     #
@@ -276,10 +237,6 @@ service / on libraryListener {
         return listSites(institution);
     }
 
-    // ------------------------------------------------------------------
-    //  2.4  Maintenance and overdue reporting
-    // ------------------------------------------------------------------
-
     # `GET /maintenance/overdue` - every schedule whose due date has passed.
     #
     # + institution - Optional institution filter.
@@ -294,10 +251,6 @@ service / on libraryListener {
         }
         return result;
     }
-
-    // ------------------------------------------------------------------
-    //  2.5  Loaning and returning
-    // ------------------------------------------------------------------
 
     # `POST /assets/{assetTag}/loan` - issues an asset or books a space.
     #
@@ -339,10 +292,6 @@ service / on libraryListener {
         return loanHistory(assetTag);
     }
 
-    // ------------------------------------------------------------------
-    //  2.6  Component management
-    // ------------------------------------------------------------------
-
     # `POST /assets/{assetTag}/components` - attaches a component.
     #
     # + assetTag - The parent asset.
@@ -373,10 +322,6 @@ service / on libraryListener {
         return result;
     }
 
-    // ------------------------------------------------------------------
-    //  2.7  Schedule management
-    // ------------------------------------------------------------------
-
     # `POST /assets/{assetTag}/schedules` - adds a maintenance, servicing,
     # inspection or booking schedule.
     #
@@ -388,6 +333,15 @@ service / on libraryListener {
         Asset|AppError result = addSchedule(assetTag, request);
         if result is AppError {
             return toErrorResponse(result, string `/assets/${assetTag}/schedules`);
+        }
+        return result;
+    }
+
+    resource function put assets/[string assetTag]/schedules/[string scheduleId](
+            @http:Payload ScheduleUpdate update) returns Asset|ApiError {
+        Asset|AppError result = updateSchedule(assetTag, scheduleId, update);
+        if result is AppError {
+            return toErrorResponse(result, string `/assets/${assetTag}/schedules/${scheduleId}`);
         }
         return result;
     }
@@ -406,10 +360,6 @@ service / on libraryListener {
         }
         return result;
     }
-
-    // ------------------------------------------------------------------
-    //  2.8  Work order and task management
-    // ------------------------------------------------------------------
 
     # `POST /assets/{assetTag}/workorders` - opens a work order.
     #

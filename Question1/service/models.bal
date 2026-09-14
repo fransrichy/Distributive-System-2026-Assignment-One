@@ -1,28 +1,4 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  models.bal
-//  ---------------------------------------------------------------------------
-//  This file contains the *domain layer* of the application. It holds nothing
-//  but data definitions:
-//
-//    * Enumerations that constrain the values a field may legally hold.
-//    * Domain records (Asset, Component, Schedule, WorkOrder, Task).
-//    * Data Transfer Objects (DTOs) used by the HTTP layer for requests.
-//    * Typed HTTP response records so that every endpoint documents the exact
-//      status codes it may emit.
-//
-//  Keeping these declarations in one file means the transport layer
-//  (main.bal), the business layer (services.bal) and the persistence layer
-//  (database.bal) all agree on a single shared vocabulary.
-// ============================================================================
-
 import ballerina/http;
-
-// ============================================================================
-//  SECTION 1 - ENUMERATIONS
-// ============================================================================
 
 # The life-cycle status of a library / campus resource.
 #
@@ -64,10 +40,6 @@ public enum WorkOrderStatus {
     CLOSED = "CLOSED",
     CANCELLED = "CANCELLED"
 }
-
-// ============================================================================
-//  SECTION 2 - CORE DOMAIN RECORDS
-// ============================================================================
 
 # A replaceable sub-part of a complex asset (e.g. the stepper motor of a
 # 3D printer, or the battery of a loan laptop).
@@ -188,10 +160,6 @@ public type Institution record {|
     string registeredOn;
 |};
 
-// ============================================================================
-//  SECTION 3 - REQUEST DTOs (what clients are allowed to send)
-// ============================================================================
-
 # Partial update payload for `PUT /assets/{assetTag}`.
 #
 # Every field is optional: only the fields present in the JSON body are
@@ -241,6 +209,12 @@ public type ScheduleRequest record {|
     ScheduleType 'type = MAINTENANCE;
     string dueDate;
     string description = "";
+|};
+
+public type ScheduleUpdate record {|
+    ScheduleType 'type?;
+    string dueDate?;
+    string description?;
 |};
 
 # A task supplied as part of a work order request.
@@ -311,10 +285,6 @@ public type InstitutionRequest record {|
     string description = "";
 |};
 
-// ============================================================================
-//  SECTION 4 - RESPONSE DTOs (what the API sends back)
-// ============================================================================
-
 # One overdue schedule entry, flattened together with its parent asset so the
 # overdue dashboard can be rendered without any further lookups.
 #
@@ -367,13 +337,6 @@ public type ErrorDetail record {|
     string message;
     string path;
 |};
-
-// ---------------------------------------------------------------------------
-//  Typed HTTP responses.
-//
-//  Ballerina turns each of these records into a real HTTP status code, so the
-//  signature of every resource function doubles as its own documentation.
-// ---------------------------------------------------------------------------
 
 # 201 Created - returned when a new asset has been stored.
 #

@@ -168,7 +168,7 @@ are tracked in a dedicated store rather than polluting the asset.
 
 ## A3. Error model
 
-Every failing endpoint returns the same envelope:
+Failures detected by the service's business logic return this envelope:
 
 ```json
 {
@@ -200,11 +200,12 @@ types**, and `util.bal:toErrorResponse` maps the type onto a status:
 | `ConflictError` | 409 | The request clashes with current state. |
 | `InternalError` | 500 | Anything unexpected. |
 
-Because the dispatch is by *type*, it is impossible to return the wrong code
-for a given failure, and no endpoint has to remember which code to use.
+The error type determines the HTTP status in a shared response mapper.
 
 Malformed JSON, or a body that cannot bind to the declared record, is rejected
 by the Ballerina HTTP module with a `400` before the resource function runs.
+Unknown routes return `404`, and unsupported methods return `405`. These
+transport errors use the HTTP module's response format.
 
 ---
 
@@ -236,6 +237,7 @@ by the Ballerina HTTP module with a `400` before the resource function runs.
 | 22 | `POST` | `/assets/{assetTag}/workorders` | Create work order |
 | 23 | `PUT` | `/assets/{assetTag}/workorders/{orderId}` | Update work order |
 | 24 | `DELETE` | `/assets/{assetTag}/workorders/{orderId}` | Delete work order |
+| 25 | `PUT` | `/assets/{assetTag}/schedules/{scheduleId}` | Modify schedule |
 
 > Path segments containing spaces must be percent-encoded — `%20`, not `+`.
 > The CLI client and the dashboard both do this for you.
@@ -668,6 +670,20 @@ curl -X POST http://localhost:8080/assets/NUST-LIB-ROOM-002/schedules -H "Conten
 
 ---
 
+### 25. `PUT /assets/{assetTag}/schedules/{scheduleId}`
+
+Updates an existing schedule without changing its identifier. Supply any of
+`type`, `dueDate` or `description`; omitted fields retain their stored values.
+Returns the updated asset. Invalid dates return `400`, missing schedules
+return `404`, and a conflicting booking date returns `409`.
+
+```json
+{"dueDate": "2026-12-01", "description": "Rescheduled servicing"}
+```
+
+The Ballerina client's option 8 supports adding, modifying and removing
+schedules. The web dashboard provides an Edit button beside each schedule.
+
 ## A12. Work order management
 
 ### 22. `POST /assets/{assetTag}/workorders`
@@ -928,8 +944,8 @@ a host may only touch their own listings.
 
 ### 3. `remove_property`
 
-Deletes a listing and answers with **everything the host still has listed in
-that same region**, exactly as the brief requires.
+Deletes a listing and returns **all AVAILABLE properties in the host's
+region**, including listings owned by other hosts in that region.
 
 **Rules**
 
@@ -941,14 +957,13 @@ that same region**, exactly as the brief requires.
 ```json
 {
   "success": true,
-  "message": "Property 'Dune 7 Chalet' (PROP-101) was removed. 2 listing(s) remain for this host in Walvis Bay.",
+  "message": "Property removed; available regional listings returned.",
   "region": "Walvis Bay",
   "remainingProperties": [ { "propertyId": "PROP-001", "…": "…" } ]
 }
 ```
 
-Even on failure the response still carries the host's current regional
-listing, so a client can always refresh its view from one round trip.
+The response identifies the region and includes its available listings.
 
 ---
 

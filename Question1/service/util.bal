@@ -1,29 +1,4 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  util.bal
-//  ---------------------------------------------------------------------------
-//  Cross-cutting helpers shared by every other layer:
-//
-//    * The application's distinct error hierarchy.
-//    * Calendar arithmetic on ISO-8601 (YYYY-MM-DD) dates.
-//    * Identifier generation for nested resources.
-//    * Input validation primitives.
-//    * Translation of a domain error into the correct typed HTTP response.
-//
-//  Every function here is `isolated`: it touches no mutable module state
-//  except through an explicit `lock`, which lets the Ballerina compiler prove
-//  the whole service is safe to run concurrently.
-// ============================================================================
-
 import ballerina/time;
-
-// ============================================================================
-//  SECTION 1 - ERROR HIERARCHY
-// ============================================================================
-//  Distinct error types let the transport layer map a failure onto the right
-//  HTTP status code by *type* rather than by inspecting message strings.
 
 # Raised when a client supplies syntactically or semantically invalid input.
 # Mapped to HTTP 400 Bad Request.
@@ -44,10 +19,6 @@ public type InternalError distinct error;
 
 # Union of everything the service layer is allowed to fail with.
 public type AppError ValidationError|NotFoundError|ConflictError|InternalError;
-
-// ============================================================================
-//  SECTION 2 - IDENTIFIER GENERATION
-// ============================================================================
 
 # Monotonically increasing counter behind every generated identifier.
 # Declared `isolated` so it can only ever be touched inside a `lock` block.
@@ -71,10 +42,6 @@ public isolated function generateId(string prefix) returns string {
     return string `${prefix}-${nextSequence()}`;
 }
 
-// ============================================================================
-//  SECTION 3 - CALENDAR HELPERS
-// ============================================================================
-
 # Left pads a number below ten with a single zero, e.g. `7` becomes `"07"`.
 #
 # + value - The number to render.
@@ -97,8 +64,6 @@ isolated function daysInMonth(int year, int month) returns int {
             return 30;
         }
     }
-    // February: leap years are divisible by 4, except centuries that are not
-    // divisible by 400.
     boolean isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
     return isLeap ? 29 : 28;
 }
@@ -111,8 +76,6 @@ isolated function daysInMonth(int year, int month) returns int {
 # + return - The instant at midnight UTC, or a `ValidationError`.
 public isolated function parseDate(string value, string fieldName = "date") returns time:Utc|ValidationError {
     string raw = value.trim();
-
-    // Shape check first: exactly 10 characters laid out as ####-##-##.
     if raw.length() != 10 || raw.substring(4, 5) != "-" || raw.substring(7, 8) != "-" {
         return error ValidationError(
             string `Field '${fieldName}' must be an ISO-8601 date in the form YYYY-MM-DD, received '${value}'.`);
@@ -126,8 +89,6 @@ public isolated function parseDate(string value, string fieldName = "date") retu
         return error ValidationError(
             string `Field '${fieldName}' contains non numeric characters: '${value}'.`);
     }
-
-    // Range checks - these catch nonsense such as 2026-13-40.
     if year < 1900 || year > 2200 {
         return error ValidationError(
             string `Field '${fieldName}' has an out of range year: ${year}.`);
@@ -222,10 +183,6 @@ public isolated function isOverdue(string dueDate) returns boolean {
     return dueDate.trim() < today();
 }
 
-// ============================================================================
-//  SECTION 4 - VALIDATION PRIMITIVES
-// ============================================================================
-
 # Rejects empty or whitespace-only strings.
 #
 # + value - The value under test.
@@ -264,36 +221,46 @@ public isolated function validateAsset(Asset asset) returns ValidationError? {
     check requireMaxLength(asset.name, "name", 200);
     check requireNonBlank(asset.institution, "institution");
     check requireNonBlank(asset.site, "site");
-
-    // `dateAcquired` must be a real calendar date and cannot be in the future.
     _ = check parseDate(asset.dateAcquired, "dateAcquired");
     if asset.dateAcquired.trim() > today() {
         return error ValidationError(
             string `Field 'dateAcquired' cannot be in the future: '${asset.dateAcquired}'.`);
     }
-
-    // Nested collections must not contain duplicate identifiers.
     check requireUniqueIds(from Component c in asset.components
         select c.compId, "components", "compId");
     check requireUniqueIds(from Schedule s in asset.schedules
         select s.scheduleId, "schedules", "scheduleId");
     check requireUniqueIds(from WorkOrder w in asset.workOrders
         select w.orderId, "workOrders", "orderId");
-
-    // Every schedule date has to parse, otherwise the overdue report breaks.
+    map<boolean> bookingDates = {};
     foreach Schedule s in asset.schedules {
         check requireNonBlank(s.scheduleId, "schedules[].scheduleId");
         _ = check parseDate(s.dueDate, string `schedules[${s.scheduleId}].dueDate`);
+        check requireMaxLength(s.description, "schedules[].description", 500);
+        if s.'type == BOOKING {
+            string date = s.dueDate.trim();
+            if bookingDates.hasKey(date) {
+                return error ValidationError(string `Asset '${asset.assetTag}' has duplicate bookings on ${date}.`);
+            }
+            bookingDates[date] = true;
+        }
     }
     foreach Component c in asset.components {
         check requireNonBlank(c.compId, "components[].compId");
         check requireNonBlank(c.name, string `components[${c.compId}].name`);
+        check requireMaxLength(c.name, "components[].name", 200);
+        check requireMaxLength(c.description, "components[].description", 500);
     }
     foreach WorkOrder w in asset.workOrders {
         check requireNonBlank(w.orderId, "workOrders[].orderId");
         check requireNonBlank(w.description, string `workOrders[${w.orderId}].description`);
+        check requireMaxLength(w.description, "workOrders[].description", 500);
         check requireUniqueIds(from Task t in w.tasks
             select t.taskId, string `workOrders[${w.orderId}].tasks`, "taskId");
+        foreach Task task in w.tasks {
+            check requireNonBlank(task.description, "tasks[].description");
+            check requireMaxLength(task.description, "tasks[].description", 500);
+        }
     }
     return ();
 }
@@ -308,6 +275,10 @@ public isolated function requireUniqueIds(string[] ids, string collectionName, s
         returns ValidationError? {
     map<boolean> seen = {};
     foreach string id in ids {
+        check requireNonBlank(id, idFieldName);
+        if id != id.trim() {
+            return error ValidationError(string `Field '${idFieldName}' must not contain surrounding whitespace.`);
+        }
         if seen.hasKey(id) {
             return error ValidationError(
                 string `Duplicate ${idFieldName} '${id}' in '${collectionName}'.`);
@@ -316,10 +287,6 @@ public isolated function requireUniqueIds(string[] ids, string collectionName, s
     }
     return ();
 }
-
-// ============================================================================
-//  SECTION 5 - ERROR TRANSLATION
-// ============================================================================
 
 # Builds the uniform error envelope shared by every failing endpoint.
 #
@@ -368,8 +335,6 @@ public isolated function toErrorResponse(error e, string path) returns ApiError 
         };
         return response;
     }
-    // Anything that is not part of the domain hierarchy is, by definition,
-    // an unexpected server side failure.
     InternalErrorResponse response = {
         body: buildErrorDetail(500, "INTERNAL_SERVER_ERROR", e.message(), path)
     };

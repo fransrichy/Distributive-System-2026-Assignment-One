@@ -1,41 +1,5 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 1
-//  Distributed Library and Resource Management System
-//  ---------------------------------------------------------------------------
-//  client.bal - Question 1 client implementation
-//  ---------------------------------------------------------------------------
-//  An interactive command line front end for the REST API defined in
-//  `Question1/service`. It is a *separate Ballerina package*, so it talks to
-//  the server purely over HTTP - exactly the inter-process communication the
-//  assignment asks for.
-//
-//  Menu
-//  ----
-//     1  View Assets                 6  View Campus Assets
-//     2  Search Asset                7  View Overdue Maintenance
-//     3  Loan Asset                  8  Create Schedule
-//     4  Return Asset                9  Create Work Order
-//     5  View Institution Assets    10  Exit
-//
-//  DESIGN NOTES
-//  ------------
-//  * The record types below intentionally mirror only the fields the client
-//    needs, and they are *open* records. A consumer that tolerates unknown
-//    fields keeps working when the server adds new ones - the standard rule
-//    for evolving a distributed contract.
-//  * Status and type fields are typed as plain `string` rather than as enums,
-//    for the same tolerance reason.
-//  * Every API call goes through `invoke`, which turns a non-2xx response and
-//    its JSON error envelope into a readable Ballerina error, so the menu
-//    loop never crashes on a server side failure.
-// ============================================================================
-
 import ballerina/http;
 import ballerina/io;
-
-// ============================================================================
-//  SECTION 1 - CONFIGURATION
-// ============================================================================
 
 # Base URL of the Library REST API. Override with `Config.toml` or
 # `bal run -- -CapiUrl=http://10.0.0.5:8080`.
@@ -43,10 +7,6 @@ configurable string apiUrl = "http://localhost:8080";
 
 # How long to wait for the server before giving up, in seconds.
 configurable decimal requestTimeout = 30;
-
-// ============================================================================
-//  SECTION 2 - CLIENT SIDE VIEW OF THE API CONTRACT
-// ============================================================================
 
 # A component of an asset, as returned by the API.
 #
@@ -146,10 +106,6 @@ public type OverdueSchedule record {
     int daysOverdue;
 };
 
-// ============================================================================
-//  SECTION 3 - TERMINAL PRESENTATION HELPERS
-// ============================================================================
-
 # Characters that never need percent-encoding inside a URI path segment,
 # per RFC 3986 section 2.3.
 const string UNRESERVED =
@@ -159,15 +115,6 @@ const string UNRESERVED =
 final readonly & string[] HEX_DIGITS =
     ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"];
 
-# Percent-encodes a value so it can be dropped into a URI path segment.
-#
-# A hand written encoder is used rather than `url:encode` because the latter
-# applies form-encoding rules, where a space becomes `+`. Inside a path
-# segment a space has to be `%20`, otherwise institution names such as
-# "University of Namibia" resolve to the wrong resource.
-#
-# + value - The raw text to encode.
-# + return - The percent-encoded text.
 isolated function encodeSegment(string value) returns string {
     string encoded = "";
     foreach string:Char ch in value {
@@ -175,8 +122,6 @@ isolated function encodeSegment(string value) returns string {
             encoded += ch;
             continue;
         }
-        // Everything else is encoded byte by byte from its UTF-8 form, which
-        // keeps the encoder correct for non-ASCII characters too.
         foreach byte b in ch.toBytes() {
             int code = <int>b;
             encoded += "%" + HEX_DIGITS[code / 16] + HEX_DIGITS[code % 16];
@@ -185,11 +130,6 @@ isolated function encodeSegment(string value) returns string {
     return encoded;
 }
 
-# Pads or truncates a value to an exact column width.
-#
-# + value - The text to lay out.
-# + width - The target column width.
-# + return - A string of exactly `width` characters.
 isolated function fit(string value, int width) returns string {
     if value.length() == width {
         return value;
@@ -204,11 +144,6 @@ isolated function fit(string value, int width) returns string {
     return padded;
 }
 
-# Repeats a character to build a horizontal rule.
-#
-# + ch - The character to repeat.
-# + count - How many times to repeat it.
-# + return - The resulting line.
 isolated function line(string ch, int count) returns string {
     string result = "";
     foreach int _ in 0 ..< count {
@@ -217,9 +152,6 @@ isolated function line(string ch, int count) returns string {
     return result;
 }
 
-# Prints a section heading surrounded by a rule.
-#
-# + title - The heading text.
 function heading(string title) {
     io:println("");
     io:println(line("=", 118));
@@ -227,40 +159,16 @@ function heading(string title) {
     io:println(line("=", 118));
 }
 
-# Prints a failure in a consistent, obvious format.
-#
-# + message - The failure text.
 function printError(string message) {
     io:println("");
     io:println("  [ERROR] " + message);
 }
 
-# Prints a success notice in a consistent format.
-#
-# + message - The success text.
 function printOk(string message) {
     io:println("");
     io:println("  [OK] " + message);
 }
 
-// ============================================================================
-//  SECTION 4 - HTTP PLUMBING
-// ============================================================================
-
-# Executes one API call and normalises the outcome.
-#
-# Sends the request using the appropriate HTTP method and returns the server’s response.
-#
-# `http:Client` exposes one remote method per verb, so the verb is dispatched  
-# here rather than passed through as a string. Every branch returns its own
-# value, which is what keeps the caller free of an uninitialised variable.
-#
-# + api - The configured HTTP client.
-# + method - "GET", "POST", "PUT" or "DELETE".
-# + path - The request path, already percent-encoded.
-# + payload - The JSON body for POST and PUT, or `()`.
-# + return - The raw HTTP response, or an error when the verb is unsupported
-#            or the request never reached the server.
 function dispatch(http:Client api, string method, string path, json payload)
         returns http:Response|error {
     match method {
@@ -284,13 +192,6 @@ function dispatch(http:Client api, string method, string path, json payload)
     return error(string `Unsupported HTTP method '${method}'.`);
 }
 
-# Executes one API call and normalises the outcome.
-#
-# + api - The configured HTTP client.
-# + method - "GET", "POST", "PUT" or "DELETE".
-# + path - The request path, already percent-encoded.
-# + payload - The JSON body for POST and PUT, or `()`.
-# + return - The decoded response body, or an error describing the failure.
 function invoke(http:Client api, string method, string path, json payload = ()) returns json|error {
     http:Response response = check dispatch(api, method, path, payload);
 
@@ -299,13 +200,10 @@ function invoke(http:Client api, string method, string path, json payload = ()) 
 
     if status >= 200 && status < 300 {
         if body is http:ClientError {
-            // A 2xx with no body is still a success.
             return ();
         }
         return body;
     }
-
-    // Non-2xx: try to surface the server's own message.
     string detail = string `the server returned HTTP ${status}`;
     if body is map<json> {
         json? message = body["message"];
@@ -317,18 +215,10 @@ function invoke(http:Client api, string method, string path, json payload = ()) 
     return error(string `Request failed (${status}): ${detail}`);
 }
 
-# Reads a line from the terminal and trims surrounding whitespace.
-#
-# + prompt - The prompt to display.
-# + return - The trimmed input.
 function ask(string prompt) returns string {
     return io:readln(prompt).trim();
 }
 
-# Reads a line and rejects a blank answer, re-prompting until one is given.
-#
-# + prompt - The prompt to display.
-# + return - The non-blank trimmed input.
 function askRequired(string prompt) returns string {
     while true {
         string value = ask(prompt);
@@ -339,14 +229,6 @@ function askRequired(string prompt) returns string {
     }
 }
 
-// ============================================================================
-//  SECTION 5 - RENDERING
-// ============================================================================
-
-# Renders a list of assets as an aligned table.
-#
-# + assets - The assets to display.
-# + title - The heading to print above the table.
 function renderAssetTable(Asset[] assets, string title) {
     heading(title);
     if assets.length() == 0 {
@@ -366,10 +248,6 @@ function renderAssetTable(Asset[] assets, string title) {
     io:println(string `  ${assets.length()} asset(s).`);
 }
 
-# Renders the full detail of a single asset, including every nested
-# collection.
-#
-# + asset - The asset to display.
 function renderAssetDetail(Asset asset) {
     heading("ASSET DETAIL - " + asset.assetTag);
     io:println("  Name         : " + asset.name);
@@ -419,9 +297,6 @@ function renderAssetDetail(Asset asset) {
     io:println("");
 }
 
-# Renders the overdue maintenance dashboard.
-#
-# + rows - The overdue rows returned by the API.
 function renderOverdue(OverdueSchedule[] rows) {
     heading("OVERDUE MAINTENANCE DASHBOARD");
     if rows.length() == 0 {
@@ -442,37 +317,20 @@ function renderOverdue(OverdueSchedule[] rows) {
     io:println(string `  ${rows.length()} overdue schedule(s).`);
 }
 
-// ============================================================================
-//  SECTION 6 - MENU ACTIONS
-// ============================================================================
-
-# Menu option 1 - lists every asset held by the ministry.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionViewAssets(http:Client api) returns error? {
     json payload = check invoke(api, "GET", "/assets");
     Asset[] assets = check payload.cloneWithType();
     renderAssetTable(assets, "GLOBAL VIEW - ALL ASSETS ACROSS THE MINISTRY");
 }
 
-# Menu option 2 - looks an asset up by tag, or falls back to a free text
-# search when the tag is not an exact match.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionSearchAsset(http:Client api) returns error? {
     string term = askRequired("  Enter an asset tag or a search term: ");
-
-    // First try an exact primary key lookup, which is the cheapest path.
     json|error exact = invoke(api, "GET", "/assets/" + encodeSegment(term));
     if exact is json {
         Asset asset = check exact.cloneWithType();
         renderAssetDetail(asset);
         return;
     }
-
-    // Not a known tag, so fall back to the free text search endpoint.
     io:println("  No asset carries that exact tag; searching all fields instead...");
     json payload = check invoke(api, "GET", "/assets?q=" + encodeSegment(term));
     Asset[] assets = check payload.cloneWithType();
@@ -483,14 +341,8 @@ function actionSearchAsset(http:Client api) returns error? {
     renderAssetTable(assets, "SEARCH RESULTS FOR '" + term + "'");
 }
 
-# Menu option 3 - loans an asset, or books a meeting room / lab.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionLoanAsset(http:Client api) returns error? {
     heading("LOAN AN ASSET / BOOK A SPACE");
-
-    // Show what is actually available so the user does not have to guess.
     json available = check invoke(api, "GET", "/assets?status=AVAILABLE");
     Asset[] assets = check available.cloneWithType();
     if assets.length() == 0 {
@@ -518,20 +370,12 @@ function actionLoanAsset(http:Client api) returns error? {
     renderAssetDetail(asset);
 }
 
-# Menu option 4 - takes an asset back from a borrower.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionReturnAsset(http:Client api) returns error? {
     heading("RETURN AN ASSET / RELEASE A SPACE");
-
-    // Everything that is currently out, in one list.
     json loanedJson = check invoke(api, "GET", "/assets?status=LOANED_OUT");
     json occupiedJson = check invoke(api, "GET", "/assets?status=OCCUPIED");
     Asset[] loaned = check loanedJson.cloneWithType();
     Asset[] occupied = check occupiedJson.cloneWithType();
-
-    // Merge the two result sets into a single list of everything that is out.
     Asset[] out = [];
     foreach Asset a in loaned {
         out.push(a);
@@ -563,10 +407,6 @@ function actionReturnAsset(http:Client api) returns error? {
     printOk(string `Asset '${asset.assetTag}' was returned and is now ${asset.status}.`);
 }
 
-# Menu option 5 - campus view filtered by institution.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionViewByInstitution(http:Client api) returns error? {
     json listing = check invoke(api, "GET", "/institutions");
     string[] institutions = check listing.cloneWithType();
@@ -582,8 +422,6 @@ function actionViewByInstitution(http:Client api) returns error? {
 
     string answer = askRequired("  Enter a number from the list, or type an institution name: ");
     string institution = answer;
-
-    // Allow selection by ordinal for convenience.
     int|error ordinal = int:fromString(answer);
     if ordinal is int && ordinal >= 1 && ordinal <= institutions.length() {
         institution = institutions[ordinal - 1];
@@ -594,10 +432,6 @@ function actionViewByInstitution(http:Client api) returns error? {
     renderAssetTable(assets, "ASSETS OWNED BY " + institution.toUpperAscii());
 }
 
-# Menu option 6 - campus view filtered by site.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionViewBySite(http:Client api) returns error? {
     json listing = check invoke(api, "GET", "/sites");
     string[] sites = check listing.cloneWithType();
@@ -623,10 +457,6 @@ function actionViewBySite(http:Client api) returns error? {
     renderAssetTable(assets, "ASSETS LOCATED AT " + site.toUpperAscii());
 }
 
-# Menu option 7 - the overdue maintenance dashboard.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionViewOverdue(http:Client api) returns error? {
     string institution = ask("  Filter by institution (blank for every institution): ");
     string path = "/maintenance/overdue";
@@ -638,10 +468,6 @@ function actionViewOverdue(http:Client api) returns error? {
     renderOverdue(rows);
 }
 
-# Menu option 8 - adds a servicing / maintenance / booking schedule.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
 function actionAddSchedule(http:Client api) returns error? {
     heading("SCHEDULE MANAGER - ADD A SCHEDULE");
 
@@ -684,10 +510,72 @@ function actionAddSchedule(http:Client api) returns error? {
     renderAssetDetail(asset);
 }
 
-# Menu option 9 - opens a work order with an arbitrary number of sub-tasks.
-#
-# + api - The configured HTTP client.
-# + return - An error when the call fails.
+function actionManageSchedule(http:Client api) returns error? {
+    heading("SCHEDULE MANAGER");
+    io:println("  1) Add schedule   2) Modify schedule   3) Remove schedule");
+    string choice = ask("  Select [1-3, default 1]: ");
+    if choice == "" || choice == "1" {
+        return actionAddSchedule(api);
+    }
+    if choice != "2" && choice != "3" {
+        return error("Choose 1, 2 or 3 for the schedule action.");
+    }
+
+    string tag = askRequired("  Asset tag: ");
+    string path = "/assets/" + encodeSegment(tag);
+    json payload = check invoke(api, "GET", path);
+    Asset asset = check payload.cloneWithType();
+    renderAssetDetail(asset);
+    if (asset?.schedules ?: []).length() == 0 {
+        io:println("  This asset has no schedules to modify or remove.");
+        return;
+    }
+
+    string scheduleId = askRequired("  Schedule id: ");
+    Schedule? selected = ();
+    foreach Schedule schedule in asset?.schedules ?: [] {
+        if schedule.scheduleId == scheduleId {
+            selected = schedule;
+            break;
+        }
+    }
+    if selected is () {
+        return error(string `Schedule '${scheduleId}' does not belong to '${tag}'.`);
+    }
+    path += "/schedules/" + encodeSegment(scheduleId);
+    if choice == "3" {
+        string answer = ask("  Remove this schedule? (y/N): ").toLowerAscii();
+        if answer != "y" && answer != "yes" {
+            return;
+        }
+        _ = check invoke(api, "DELETE", path);
+        printOk(string `Schedule '${scheduleId}' removed from '${tag}'.`);
+        return;
+    }
+
+    string scheduleType = ask("  Type (MAINTENANCE / SERVICING / INSPECTION / BOOKING; blank to keep): ").toUpperAscii();
+    string dueDate = ask(string `  Due date (YYYY-MM-DD, blank to keep ${selected.dueDate}): `);
+    string description = ask("  Description (blank to keep): ");
+    map<json> request = {};
+    if scheduleType.length() > 0 {
+        request["type"] = scheduleType;
+    }
+    if dueDate.length() > 0 {
+        request["dueDate"] = dueDate;
+    }
+    if description.length() > 0 {
+        request["description"] = description;
+    }
+    if request.length() == 0 {
+        io:println("  No changes entered.");
+        return;
+    }
+    json updated = check invoke(api, "PUT", path, request);
+    Asset updatedAsset = check updated.cloneWithType();
+    printOk(string `Schedule '${scheduleId}' updated.`);
+    renderAssetDetail(updatedAsset);
+}
+
 function actionCreateWorkOrder(http:Client api) returns error? {
     heading("WORK ORDER MANAGER - OPEN A WORK ORDER");
 
@@ -719,11 +607,6 @@ function actionCreateWorkOrder(http:Client api) returns error? {
     renderAssetDetail(asset);
 }
 
-// ============================================================================
-//  SECTION 7 - MENU LOOP
-// ============================================================================
-
-# Prints the main menu.
 function printMenu() {
     io:println("");
     io:println(line("=", 62));
@@ -736,23 +619,15 @@ function printMenu() {
     io:println("    5.  View Institution Assets    (filter by institution)");
     io:println("    6.  View Campus Assets         (filter by site)");
     io:println("    7.  View Overdue Maintenance   (staff dashboard)");
-    io:println("    8.  Add Schedule               (schedule manager)");
+    io:println("    8.  Manage Schedules           (add / modify / remove)");
     io:println("    9.  Create Work Order          (fault reporting)");
     io:println("   10.  Exit");
     io:println(line("=", 62));
 }
 
-# Confirms the API is reachable before the menu is shown, so that a wrong 
-# port or a server that is not running is reported once and clearly instead of
-# failing on every menu option.
-#
-# + api - The configured HTTP client.
-# + return - An error when the server cannot be reached.
 function checkConnection(http:Client api) returns error? {
     json payload = check invoke(api, "GET", "/health");
     if payload is map<json> {
-        // A string template only accepts simple types, and `json` also covers
-        // arrays and maps, so the count is rendered explicitly.
         json? assets = payload["assets"];
         string count = assets is () ? "0" : assets.toString();
         io:println(string `  Connected to ${apiUrl} - ${count} asset(s) in the store.`);
@@ -782,9 +657,6 @@ public function main() returns error? {
     while true {
         printMenu();
         string choice = ask("  Select an option [1-10]: ");
-
-        // Each action is executed defensively: a server side failure is
-        // reported and the menu is shown again rather than terminating.
         error? outcome = ();
         match choice {
             "1" => {
@@ -809,7 +681,7 @@ public function main() returns error? {
                 outcome = actionViewOverdue(api);
             }
             "8" => {
-                outcome = actionAddSchedule(api);
+                outcome = actionManageSchedule(api);
             }
             "9" => {
                 outcome = actionCreateWorkOrder(api);
@@ -829,7 +701,3 @@ public function main() returns error? {
         }
     }
 }
-
-// Client-side helpers and menu actions keep user interaction separate from API communication.
-
-// Input handling is kept explicit so each client operation can validate user data before sending requests.

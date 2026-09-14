@@ -1,43 +1,9 @@
-// ============================================================================
-//  DSA612S - Assignment 1 - Question 2
-//  Rental Accommodation System - Ministry of Tourism
-//  ---------------------------------------------------------------------------
-//  rental.proto
-//  ---------------------------------------------------------------------------
-//  The service contract. This file is the single source of truth shared by the
-//  Ballerina server and the Ballerina client; both sides regenerate their
-//  stubs from it with:
-//
-//      bal grpc --input proto/rental.proto --output server --mode service
-//      bal grpc --input proto/rental.proto --output client --mode client
-//
-//  RPC STYLES USED
-//  ---------------
-//    * Unary (simple)          - add_property, update_property,
-//                                remove_property, search_property,
-//                                book_property, confirm_booking
-//    * Client-side streaming   - create_users
-//    * Server-side streaming   - list_available_properties
-//
-//  CONVENTIONS
-//  -----------
-//    * Field names are camelCase so the generated Ballerina records read
-//      idiomatically and match the data model in the assignment brief.
-//    * Every enum reserves 0 for an "unknown" member, as proto3 requires.
-//    * Dates are ISO-8601 calendar dates (YYYY-MM-DD) carried as strings.
-//      They sort lexicographically, which makes overlap detection cheap.
-//    * Money is a `double` holding an amount in Namibian Dollars (NAD).
-// ============================================================================
-
+// Regenerate stubs from Question2: bal grpc --input proto/rental.proto --output server --mode service
+// Repeat with --output client --mode client for the client stubs.
 syntax = "proto3";
 
 package rental;
 
-// ============================================================================
-//  ENUMERATIONS
-// ============================================================================
-
-// Availability of a listing.
 enum PropertyStatus {
   PROPERTY_STATUS_UNKNOWN = 0;  // Never set explicitly; proto3 default.
   AVAILABLE = 1;                // Open for booking.
@@ -45,14 +11,12 @@ enum PropertyStatus {
   UNDER_MAINTENANCE = 3;        // Temporarily out of service.
 }
 
-// The role a user account plays in the platform.
 enum UserRole {
   USER_ROLE_UNKNOWN = 0;
   HOST = 1;                     // Manages property listings.
   GUEST = 2;                    // Browses, searches and books.
 }
 
-// Life-cycle of a booking.
 enum BookingState {
   BOOKING_STATE_UNKNOWN = 0;
   PENDING = 1;                  // Sitting in the guest's temporary cart.
@@ -60,11 +24,6 @@ enum BookingState {
   CANCELLED = 3;                // Abandoned or rejected.
 }
 
-// ============================================================================
-//  DOMAIN MESSAGES
-// ============================================================================
-
-// A short-term rental listing.
 message Property {
   string propertyId = 1;        // Server generated, globally unique.
   string hostId = 2;            // Owning host.
@@ -78,7 +37,6 @@ message Property {
   repeated string amenities = 10; // WIFI, POOL, PARKING, ...
 }
 
-// A host profile.
 message Host {
   string hostId = 1;
   string name = 2;
@@ -87,7 +45,6 @@ message Host {
   string region = 5;            // Region the host operates in.
 }
 
-// A guest profile.
 message Guest {
   string guestId = 1;
   string name = 2;
@@ -95,7 +52,6 @@ message Guest {
   string phone = 4;
 }
 
-// A reservation of one property for a date range.
 message Booking {
   string bookingId = 1;
   string propertyId = 2;
@@ -108,10 +64,6 @@ message Booking {
   string confirmedAt = 9;       // Timestamp of confirmation, or "".
   string propertyName = 10;     // Denormalised for convenient display.
 }
-
-// ============================================================================
-//  add_property  (unary)
-// ============================================================================
 
 message AddPropertyRequest {
   string hostId = 1;
@@ -132,12 +84,7 @@ message AddPropertyResponse {
   Property property = 4;
 }
 
-// ============================================================================
-//  update_property  (unary)
-// ============================================================================
-
-// Empty string / zero fields are treated as "leave unchanged", which lets a
-// host patch just the price or just the status.
+// Empty strings and zero values in an update leave the existing field unchanged.
 message UpdatePropertyRequest {
   string propertyId = 1;        // Required: the key of the listing.
   string hostId = 2;            // Required: proves ownership.
@@ -157,27 +104,18 @@ message UpdatePropertyResponse {
   Property property = 3;
 }
 
-// ============================================================================
-//  remove_property  (unary)
-// ============================================================================
-
 message RemovePropertyRequest {
   string propertyId = 1;
   string hostId = 2;
 }
 
-// The brief requires the server to answer with the host's remaining listings
-// in that region, so the response carries the whole refreshed list.
+// Includes all available listings in the host's region, regardless of owner.
 message RemovePropertyResponse {
   bool success = 1;
   string message = 2;
   string region = 3;
   repeated Property remainingProperties = 4;
 }
-
-// ============================================================================
-//  search_property  (unary)
-// ============================================================================
 
 message SearchPropertyRequest {
   string propertyId = 1;
@@ -189,10 +127,6 @@ message SearchPropertyResponse {
   string message = 3;
   Property property = 4;
 }
-
-// ============================================================================
-//  book_property  (unary)  - adds to the temporary booking cart
-// ============================================================================
 
 message BookPropertyRequest {
   string propertyId = 1;
@@ -209,10 +143,6 @@ message BookPropertyResponse {
   double estimatedCost = 5;
 }
 
-// ============================================================================
-//  confirm_booking  (unary)  - finalises a cart entry
-// ============================================================================
-
 message ConfirmBookingRequest {
   string bookingId = 1;
   string guestId = 2;
@@ -224,12 +154,6 @@ message ConfirmBookingResponse {
   Booking booking = 3;
 }
 
-// ============================================================================
-//  create_users  (client-side streaming)
-// ============================================================================
-
-// One user profile in the stream. `role` decides whether a Host or a Guest
-// record is created on the server.
 message CreateUserRequest {
   string userId = 1;            // Optional; generated when blank.
   string name = 2;
@@ -239,9 +163,6 @@ message CreateUserRequest {
   string region = 6;            // Hosts only; ignored for guests.
 }
 
-// A single summary
-
- returned once the client has closed the stream.
 message CreateUsersSummary {
   bool success = 1;
   string message = 2;
@@ -252,11 +173,6 @@ message CreateUsersSummary {
   repeated string createdIds = 7;
 }
 
-// ============================================================================
-//  list_available_properties  (server-side streaming)
-// ============================================================================
-
-// Every filter is optional. A zero `maxPrice` means "no upper bound".
 message ListAvailableRequest {
   string location = 1;
   double minPrice = 2;
@@ -265,37 +181,21 @@ message ListAvailableRequest {
   int32 minGuests = 5;
 }
 
-// ============================================================================
-//  THE SERVICE
-// ============================================================================
-
 service RentalService {
 
-  // Host registers a new listing and receives its unique property id.
   rpc add_property (AddPropertyRequest) returns (AddPropertyResponse);
 
-  // Host patches an existing listing.
   rpc update_property (UpdatePropertyRequest) returns (UpdatePropertyResponse);
 
-  // Host deletes a listing; the server answers with the remaining listings
-  // in that host's region.
   rpc remove_property (RemovePropertyRequest) returns (RemovePropertyResponse);
 
-  // Guest looks one listing up by its id.
   rpc search_property (SearchPropertyRequest) returns (SearchPropertyResponse);
 
-  // Guest places a date range into the temporary booking cart.
   rpc book_property (BookPropertyRequest) returns (BookPropertyResponse);
 
-  // Guest finalises a cart entry; the server re-checks availability,
-  // calculates the total and clears the cart.
   rpc confirm_booking (ConfirmBookingRequest) returns (ConfirmBookingResponse);
 
-  // CLIENT-SIDE STREAMING: the client pushes many user profiles and the
-  // server answers once, after the stream has been closed.
   rpc create_users (stream CreateUserRequest) returns (CreateUsersSummary);
 
-  // SERVER-SIDE STREAMING: the server pushes matching listings back one by
-  // one, so the guest starts seeing results before the search has finished.
   rpc list_available_properties (ListAvailableRequest) returns (stream Property);
 }

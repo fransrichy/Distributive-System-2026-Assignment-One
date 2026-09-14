@@ -2,7 +2,7 @@
 org = "dsa612s"
 name = "rental_client"
 version = "1.0.0"
-distribution = "2201.10.0"
+distribution = "2201.13.5"
 authors = ["DSA612S Group"]
 keywords = ["grpc", "protobuf", "cli", "client"]
 license = ["Apache-2.0"]

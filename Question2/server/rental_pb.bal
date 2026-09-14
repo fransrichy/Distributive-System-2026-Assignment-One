@@ -575,7 +575,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/add_property", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <AddPropertyResponse>result;
     }
 
@@ -595,7 +595,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/add_property", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <AddPropertyResponse>result, headers: respHeaders};
     }
 
@@ -617,7 +617,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/update_property", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <UpdatePropertyResponse>result;
     }
 
@@ -637,7 +637,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/update_property", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <UpdatePropertyResponse>result, headers: respHeaders};
     }
 
@@ -659,7 +659,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/remove_property", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <RemovePropertyResponse>result;
     }
 
@@ -679,7 +679,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/remove_property", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <RemovePropertyResponse>result, headers: respHeaders};
     }
 
@@ -701,7 +701,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/search_property", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <SearchPropertyResponse>result;
     }
 
@@ -721,7 +721,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/search_property", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <SearchPropertyResponse>result, headers: respHeaders};
     }
 
@@ -743,7 +743,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/book_property", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <BookPropertyResponse>result;
     }
 
@@ -763,7 +763,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/book_property", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <BookPropertyResponse>result, headers: respHeaders};
     }
 
@@ -785,7 +785,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/confirm_booking", message, headers);
-        [anydata, map<string|string[]>][result, _] = payload;
+        [anydata, map<string|string[]>] [result, _] = payload;
         return <ConfirmBookingResponse>result;
     }
 
@@ -805,7 +805,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeSimpleRPC(
             "rental.RentalService/confirm_booking", message, headers);
-        [anydata, map<string|string[]>][result, respHeaders] = payload;
+        [anydata, map<string|string[]>] [result, respHeaders] = payload;
         return {content: <ConfirmBookingResponse>result, headers: respHeaders};
     }
 
@@ -838,7 +838,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeServerStreaming(
             "rental.RentalService/list_available_properties", message, headers);
-        [stream<anydata, grpc:Error?>, map<string|string[]>][result, _] = payload;
+        [stream<anydata, grpc:Error?>, map<string|string[]>] [result, _] = payload;
         PropertyStream outputStream = new PropertyStream(result);
         return new stream<Property, grpc:Error?>(outputStream);
     }
@@ -860,7 +860,7 @@ public isolated client class RentalServiceClient {
         }
         var payload = check self.grpcClient->executeServerStreaming(
             "rental.RentalService/list_available_properties", message, headers);
-        [stream<anydata, grpc:Error?>, map<string|string[]>][result, respHeaders] = payload;
+        [stream<anydata, grpc:Error?>, map<string|string[]>] [result, respHeaders] = payload;
         PropertyStream outputStream = new PropertyStream(result);
         return {content: new stream<Property, grpc:Error?>(outputStream), headers: respHeaders};
     }
@@ -944,7 +944,7 @@ public client class Create_usersStreamingClient {
         if response is () {
             return response;
         } else {
-            [anydata, map<string|string[]>][payload, _] = response;
+            [anydata, map<string|string[]>] [payload, _] = response;
             return <CreateUsersSummary>payload;
         }
     }
@@ -957,7 +957,7 @@ public client class Create_usersStreamingClient {
         if response is () {
             return response;
         } else {
-            [anydata, map<string|string[]>][payload, headers] = response;
+            [anydata, map<string|string[]>] [payload, headers] = response;
             return {content: <CreateUsersSummary>payload, headers: headers};
         }
     }
