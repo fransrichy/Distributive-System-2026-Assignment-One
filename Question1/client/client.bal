@@ -1,30 +1,16 @@
 import ballerina/http;
 import ballerina/io;
 
-# Base URL of the Library REST API. Override with `Config.toml` or
-# `bal run -- -CapiUrl=http://10.0.0.5:8080`.
 configurable string apiUrl = "http://localhost:8080";
 
-# How long to wait for the server before giving up, in seconds.
 configurable decimal requestTimeout = 30;
 
-# A component of an asset, as returned by the API.
-#
-# + compId - Component identifier.
-# + name - Component name.
-# + description - What the component does.
 public type Component record {
     string compId;
     string name;
     string description?;
 };
 
-# A schedule entry attached to an asset.
-#
-# + scheduleId - Schedule identifier.
-# + type - MAINTENANCE, SERVICING, INSPECTION or BOOKING.
-# + dueDate - ISO-8601 due date.
-# + description - What has to be done.
 public type Schedule record {
     string scheduleId;
     string 'type?;
@@ -32,23 +18,12 @@ public type Schedule record {
     string description?;
 };
 
-# A sub-task of a work order.
-#
-# + taskId - Task identifier.
-# + description - What has to be done.
-# + completed - Whether the task is finished.
 public type Task record {
     string taskId;
     string description;
     boolean completed?;
 };
 
-# A repair job raised against an asset.
-#
-# + orderId - Work order identifier.
-# + status - OPEN, IN_PROGRESS, CLOSED or CANCELLED.
-# + description - Summary of the fault.
-# + tasks - The steps required to fix it.
 public type WorkOrder record {
     string orderId;
     string status?;
@@ -56,18 +31,6 @@ public type WorkOrder record {
     Task[] tasks?;
 };
 
-# A library or campus resource.
-#
-# + assetTag - Ministry-wide unique tag.
-# + name - Human readable name.
-# + description - Long form description.
-# + institution - Owning institution.
-# + site - Campus / site.
-# + status - Current availability status.
-# + dateAcquired - ISO-8601 acquisition date.
-# + components - Replaceable sub-parts.
-# + schedules - Maintenance and booking entries.
-# + workOrders - Repair jobs.
 public type Asset record {
     string assetTag;
     string name;
@@ -81,18 +44,6 @@ public type Asset record {
     WorkOrder[] workOrders?;
 };
 
-# One row of the overdue maintenance report.
-#
-# + assetTag - Tag of the affected asset.
-# + assetName - Name of the affected asset.
-# + institution - Owning institution.
-# + site - Campus / site.
-# + status - Current status of the asset.
-# + scheduleId - Identifier of the overdue schedule.
-# + scheduleType - Category of the overdue schedule.
-# + dueDate - The date that has passed.
-# + description - Description of the outstanding work.
-# + daysOverdue - How many whole days late it is.
 public type OverdueSchedule record {
     string assetTag;
     string assetName;
@@ -106,12 +57,9 @@ public type OverdueSchedule record {
     int daysOverdue;
 };
 
-# Characters that never need percent-encoding inside a URI path segment,
-# per RFC 3986 section 2.3.
 const string UNRESERVED =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 
-# Lookup table used by the percent-encoder.
 final readonly & string[] HEX_DIGITS =
     ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"];
 
@@ -634,10 +582,6 @@ function checkConnection(http:Client api) returns error? {
     }
 }
 
-# Program entry point: builds the HTTP client, verifies connectivity and then
-# runs the menu loop until the user chooses to exit.
-#
-# + return - An error only when the client itself cannot be constructed.
 public function main() returns error? {
     io:println(line("=", 62));
     io:println("   DSA612S - DISTRIBUTED LIBRARY AND RESOURCE MANAGEMENT");

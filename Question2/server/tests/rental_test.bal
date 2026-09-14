@@ -39,7 +39,6 @@ function collectProperties(RentalServiceClient rentalClient, ListAvailableReques
     if row is grpc:Error {
         return row;
     }
-    check results.close();
     return properties;
 }
 

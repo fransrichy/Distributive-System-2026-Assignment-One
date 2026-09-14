@@ -1,29 +1,15 @@
-# Primary in-memory store. `assetTag` is the unique key, exactly as required
-# by the assignment brief.
 isolated table<Asset> key(assetTag) assetTable = table [];
 
-# Audit trail of every loan and space booking ever made.
 isolated table<LoanRecord> key(loanId) loanTable = table [];
 
-# Registry of institutions that have been added to the listing explicitly.
-# An institution may also be implied by the assets that reference it; the two
-# sources are merged by `selectDistinctInstitutions`.
 isolated table<Institution> key(name) institutionTable = table [];
 
-# Tests whether an asset with the given tag is present.
-#
-# + assetTag - The primary key to probe.
-# + return - `true` when the asset exists.
 public isolated function assetExists(string assetTag) returns boolean {
     lock {
         return assetTable.hasKey(assetTag);
     }
 }
 
-# Inserts a brand new asset.
-#
-# + asset - The asset to store; its `assetTag` must not already be in use.
-# + return - The stored asset, or a `ConflictError` when the tag is taken.
 public isolated function insertAsset(Asset asset) returns Asset|ConflictError {
     lock {
         if assetTable.hasKey(asset.assetTag) {
@@ -35,9 +21,6 @@ public isolated function insertAsset(Asset asset) returns Asset|ConflictError {
     }
 }
 
-# Reads every asset in the store.
-#
-# + return - A detached snapshot of all assets, sorted by `assetTag`.
 public isolated function selectAllAssets() returns Asset[] {
     lock {
         Asset[] snapshot = from Asset a in assetTable
@@ -47,10 +30,6 @@ public isolated function selectAllAssets() returns Asset[] {
     }
 }
 
-# Reads a single asset by its primary key.
-#
-# + assetTag - The primary key to look up.
-# + return - A detached copy of the asset, or a `NotFoundError`.
 public isolated function selectAsset(string assetTag) returns Asset|NotFoundError {
     lock {
         Asset? found = assetTable[assetTag];
@@ -61,14 +40,6 @@ public isolated function selectAsset(string assetTag) returns Asset|NotFoundErro
     }
 }
 
-# Overwrites an existing asset with a modified copy.
-#
-# The caller is expected to have read the asset first, mutated its own copy,
-# and to be writing that copy back. The tag must already exist, otherwise the
-# caller has a bug.
-#
-# + asset - The full replacement value.
-# + return - A detached copy of what was stored, or a `NotFoundError`.
 public isolated function saveAsset(Asset asset) returns Asset|NotFoundError {
     lock {
         if !assetTable.hasKey(asset.assetTag) {
@@ -79,10 +50,6 @@ public isolated function saveAsset(Asset asset) returns Asset|NotFoundError {
     }
 }
 
-# Permanently removes an asset from the store.
-#
-# + assetTag - The primary key to remove.
-# + return - A detached copy of the removed asset, or a `NotFoundError`.
 public isolated function deleteAssetRow(string assetTag) returns Asset|NotFoundError {
     lock {
         if !assetTable.hasKey(assetTag) {
@@ -93,11 +60,6 @@ public isolated function deleteAssetRow(string assetTag) returns Asset|NotFoundE
     }
 }
 
-# Filters assets by owning institution. The comparison is case insensitive and
-# ignores surrounding whitespace so that URL supplied values behave sensibly.
-#
-# + institution - The institution name to match.
-# + return - A detached snapshot of the matching assets.
 public isolated function selectByInstitution(string institution) returns Asset[] {
     string needle = institution.trim().toLowerAscii();
     lock {
@@ -109,10 +71,6 @@ public isolated function selectByInstitution(string institution) returns Asset[]
     }
 }
 
-# Filters assets by campus / site, case insensitively.
-#
-# + site - The site name to match.
-# + return - A detached snapshot of the matching assets.
 public isolated function selectBySite(string site) returns Asset[] {
     string needle = site.trim().toLowerAscii();
     lock {
@@ -124,11 +82,6 @@ public isolated function selectBySite(string site) returns Asset[] {
     }
 }
 
-# Lists the distinct institutions in the listing: those registered explicitly
-# plus those implied by an asset that references them.
-# Backs the "manage institutions" requirement in the marking rubric.
-#
-# + return - A sorted, de-duplicated list of institution names.
 public isolated function selectDistinctInstitutions() returns string[] {
     string[] registered = selectRegisteredNames();
     string[] owning = selectOwningNames();
@@ -148,9 +101,6 @@ public isolated function selectDistinctInstitutions() returns string[] {
     return names.sort();
 }
 
-# The names on the institution registry.
-#
-# + return - A detached list of registered institution names.
 isolated function selectRegisteredNames() returns string[] {
     lock {
         string[] names = from Institution i in institutionTable
@@ -159,9 +109,6 @@ isolated function selectRegisteredNames() returns string[] {
     }
 }
 
-# The institution named by each asset, duplicates included.
-#
-# + return - A detached list of the institution on every asset.
 isolated function selectOwningNames() returns string[] {
     lock {
         string[] names = from Asset a in assetTable
@@ -170,10 +117,6 @@ isolated function selectOwningNames() returns string[] {
     }
 }
 
-# Lists the distinct campuses / sites, optionally narrowed to one institution.
-#
-# + institution - Institution to narrow by, or `()` for every institution.
-# + return - A sorted, de-duplicated list of site names.
 public isolated function selectDistinctSites(string? institution = ()) returns string[] {
     string? needle = institution is string ? institution.trim().toLowerAscii() : ();
     lock {
@@ -193,12 +136,6 @@ public isolated function selectDistinctSites(string? institution = ()) returns s
     }
 }
 
-# Removes every asset belonging to an institution. This supports the
-# "add/remove institutions from listings" requirement; the registry row, if the
-# institution has one, is dropped by the service layer alongside these assets.
-#
-# + institution - The institution to withdraw.
-# + return - The tags of the assets that were removed.
 public isolated function deleteByInstitution(string institution) returns string[] {
     string needle = institution.trim().toLowerAscii();
     lock {
@@ -212,11 +149,6 @@ public isolated function deleteByInstitution(string institution) returns string[
     }
 }
 
-# Tests whether an institution is already on the registry. The comparison is
-# case-insensitive, matching how institutions are matched everywhere else.
-#
-# + name - The institution name to probe.
-# + return - `true` when a registry row exists under that name.
 public isolated function institutionExists(string name) returns boolean {
     string needle = name.trim().toLowerAscii();
     lock {
@@ -229,10 +161,6 @@ public isolated function institutionExists(string name) returns boolean {
     }
 }
 
-# Registers a brand new institution.
-#
-# + institution - The institution to store; its name must not already be taken.
-# + return - The stored institution, or a `ConflictError` when the name is taken.
 public isolated function insertInstitution(Institution institution)
         returns Institution|ConflictError {
     string needle = institution.name.trim().toLowerAscii();
@@ -248,12 +176,6 @@ public isolated function insertInstitution(Institution institution)
     }
 }
 
-# Deregisters an institution, removing its registry row if it has one. An
-# institution that is only implied by its assets has no row, which is not an
-# error - the caller decides whether that counts as "not found".
-#
-# + name - The institution to deregister.
-# + return - `true` when a registry row was actually removed.
 public isolated function deleteInstitutionRow(string name) returns boolean {
     string needle = name.trim().toLowerAscii();
     lock {
@@ -267,9 +189,6 @@ public isolated function deleteInstitutionRow(string name) returns boolean {
     }
 }
 
-# Counts assets grouped by status, used by the dashboard summary endpoint.
-#
-# + return - A map from status name to the number of assets in that status.
 public isolated function countByStatus() returns map<int> {
     lock {
         map<int> tally = {};
@@ -281,20 +200,12 @@ public isolated function countByStatus() returns map<int> {
     }
 }
 
-# The total number of assets currently stored.
-#
-# + return - The row count of the asset table.
 public isolated function countAssets() returns int {
     lock {
         return assetTable.length();
     }
 }
 
-# Records the start of a loan or space booking.
-#
-# + loan - The loan record to store.
-# + return - A detached copy of the stored record, or a `ConflictError` when
-#            the generated loan id has somehow already been used.
 public isolated function insertLoan(LoanRecord loan) returns LoanRecord|ConflictError {
     lock {
         if loanTable.hasKey(loan.loanId) {
@@ -305,10 +216,6 @@ public isolated function insertLoan(LoanRecord loan) returns LoanRecord|Conflict
     }
 }
 
-# Finds the open loan for an asset, if the asset is currently out.
-#
-# + assetTag - The asset to look up.
-# + return - The open loan, or `()` when the asset is not on loan.
 public isolated function selectActiveLoan(string assetTag) returns LoanRecord? {
     lock {
         LoanRecord[] open = from LoanRecord l in loanTable
@@ -321,11 +228,6 @@ public isolated function selectActiveLoan(string assetTag) returns LoanRecord? {
     }
 }
 
-# Closes an open loan by stamping it with a return date.
-#
-# + loanId - The loan to close.
-# + returnedOn - The ISO-8601 date the asset came back.
-# + return - The closed loan, or a `NotFoundError` when the id is unknown.
 public isolated function closeLoan(string loanId, string returnedOn) returns LoanRecord|NotFoundError {
     lock {
         LoanRecord? found = loanTable[loanId];
@@ -340,10 +242,6 @@ public isolated function closeLoan(string loanId, string returnedOn) returns Loa
     }
 }
 
-# Reads the loan history, newest first, optionally narrowed to one asset.
-#
-# + assetTag - The asset to narrow by, or `()` for the whole history.
-# + return - A detached snapshot of the matching loan records.
 public isolated function selectLoans(string? assetTag = ()) returns LoanRecord[] {
     lock {
         LoanRecord[] rows = from LoanRecord l in loanTable
@@ -354,14 +252,6 @@ public isolated function selectLoans(string? assetTag = ()) returns LoanRecord[]
     }
 }
 
-# Populates the store with a realistic cross-campus data set so that the CLI
-# client, the web dashboard and the marker all have something to work with the
-# moment the server starts.
-#
-# The seed intentionally contains schedules that are already in the past, so
-# that `GET /maintenance/overdue` returns meaningful rows on a fresh start.
-#
-# + return - The number of assets that were seeded.
 public isolated function seedDatabase() returns int {
     string overdueDate = checkpanic addDays(today(), -45);
     string recentlyOverdue = checkpanic addDays(today(), -7);

@@ -1,8 +1,3 @@
-# Creates and stores a brand new asset.
-#
-# + asset - The candidate asset, exactly as supplied by the client.
-# + return - The stored asset, a `ValidationError` when the payload is invalid,
-#            or a `ConflictError` when the `assetTag` is already taken.
 public isolated function createAsset(Asset asset) returns Asset|AppError {
     check validateAsset(asset);
     Asset normalised = {
@@ -23,32 +18,15 @@ public isolated function createAsset(Asset asset) returns Asset|AppError {
     return check insertAsset(normalised);
 }
 
-# Reads every asset held by the ministry.
-#
-# + return - A snapshot of all assets ordered by `assetTag`.
 public isolated function listAssets() returns Asset[] {
     return selectAllAssets();
 }
 
-# Reads a single asset.
-#
-# + assetTag - The primary key to look up.
-# + return - The asset, or a `NotFoundError`.
 public isolated function getAsset(string assetTag) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     return check selectAsset(assetTag.trim());
 }
 
-# Applies a partial update to an existing asset.
-#
-# Only the fields present in `update` are changed; everything else is carried
-# over from the stored value. The whole result is re-validated before it is
-# written back, so a partial update can never leave the store inconsistent.
-#
-# + assetTag - The asset to modify.
-# + update - The fields to change.
-# + return - The updated asset, or a `ValidationError`, `NotFoundError` or
-#            `ConflictError`.
 public isolated function updateAsset(string assetTag, AssetUpdate update) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     Asset current = check selectAsset(assetTag.trim());
@@ -89,10 +67,6 @@ public isolated function updateAsset(string assetTag, AssetUpdate update) return
     return check saveAsset(merged);
 }
 
-# Permanently removes an asset.
-#
-# + assetTag - The asset to remove.
-# + return - The removed asset, or a `NotFoundError` / `ConflictError`.
 public isolated function deleteAsset(string assetTag) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     string tag = assetTag.trim();
@@ -105,34 +79,16 @@ public isolated function deleteAsset(string assetTag) returns Asset|AppError {
     return check deleteAssetRow(tag);
 }
 
-# Lists every asset owned by one institution.
-#
-# + institution - The institution name, matched case insensitively.
-# + return - The matching assets, or a `ValidationError` for a blank name.
 public isolated function listByInstitution(string institution) returns Asset[]|AppError {
     check requireNonBlank(institution, "institution");
     return selectByInstitution(institution);
 }
 
-# Lists every asset located at one campus / site.
-#
-# + site - The site name, matched case insensitively.
-# + return - The matching assets, or a `ValidationError` for a blank name.
 public isolated function listBySite(string site) returns Asset[]|AppError {
     check requireNonBlank(site, "site");
     return selectBySite(site);
 }
 
-# Free-text search across the whole catalogue, with optional structured
-# filters layered on top. Backs both the `q` parameter of `GET /assets` and
-# the "Search Asset" option of the command line client.
-#
-# + query - Case insensitive substring matched against tag, name, description,
-#           institution and site. `()` or blank matches everything.
-# + institution - Optional exact (case insensitive) institution filter.
-# + site - Optional exact (case insensitive) site filter.
-# + status - Optional status filter.
-# + return - The matching assets ordered by `assetTag`.
 public isolated function searchAssets(string? query = (), string? institution = (),
         string? site = (), AssetStatus? status = ()) returns Asset[] {
 
@@ -165,28 +121,14 @@ public isolated function searchAssets(string? query = (), string? institution = 
     return results;
 }
 
-# The distinct institutions currently represented in the listing.
-#
-# + return - A sorted list of institution names.
 public isolated function listInstitutions() returns string[] {
     return selectDistinctInstitutions();
 }
 
-# The distinct campuses / sites, optionally narrowed to one institution.
-#
-# + institution - The institution to narrow by, or `()` for all of them.
-# + return - A sorted list of site names.
 public isolated function listSites(string? institution = ()) returns string[] {
     return selectDistinctSites(institution);
 }
 
-# Registers an institution so that it appears in the listing before any of its
-# assets have been captured. Without this an institution could only enter the
-# listing as a side effect of creating an asset, which is the wrong way round
-# for a ministry that accredits the institution first.
-#
-# + request - The submitted name and optional description.
-# + return - The stored institution, or an `AppError`.
 public isolated function registerInstitution(InstitutionRequest request)
         returns Institution|AppError {
     check requireNonBlank(request.name, "name");
@@ -210,12 +152,6 @@ public isolated function registerInstitution(InstitutionRequest request)
     return insertInstitution(institution);
 }
 
-# Withdraws an entire institution from the listing, deleting all of its assets
-# and its registry row. Refuses to run while any of those assets is still out
-# on loan.
-#
-# + institution - The institution to withdraw.
-# + return - The tags that were removed, or an `AppError`.
 public isolated function removeInstitution(string institution) returns string[]|AppError {
     check requireNonBlank(institution, "institution");
     Asset[] owned = selectByInstitution(institution);
@@ -235,18 +171,6 @@ public isolated function removeInstitution(string institution) returns string[]|
     return deleteByInstitution(institution);
 }
 
-# Builds the overdue report: every schedule entry whose due date lies in the
-# past, flattened together with its parent asset.
-#
-# Disposed assets are skipped - there is no point chasing maintenance on an
-# asset that has been written off. Room bookings are also skipped by default
-# because a booking in the past is simply a booking that has happened, not an
-# outstanding job; pass `includeBookings = true` to see them anyway.
-#
-# + institution - Optional institution filter.
-# + site - Optional campus / site filter.
-# + includeBookings - Whether to include `BOOKING` type schedules.
-# + return - The overdue rows, most overdue first, or an `AppError`.
 public isolated function overdueSchedules(string? institution = (), string? site = (),
         boolean includeBookings = false) returns OverdueSchedule[]|AppError {
 
@@ -315,9 +239,6 @@ public isolated function overdueSchedules(string? institution = (), string? site
         select row;
 }
 
-# A compact set of counters used by the web dashboard's summary tiles.
-#
-# + return - A JSON friendly map of headline figures.
 public isolated function dashboardSummary() returns map<json> {
     OverdueSchedule[]|AppError overdue = overdueSchedules();
     int overdueCount = overdue is OverdueSchedule[] ? overdue.length() : 0;
@@ -335,16 +256,6 @@ public isolated function dashboardSummary() returns map<json> {
     };
 }
 
-# Loans an asset to a borrower, or books a physical space.
-#
-# Domain rules enforced here:
-#   * The asset must exist.
-#   * Only an `AVAILABLE` asset can go out.
-#   * The due date must be a real date that is not in the past.
-#
-# + assetTag - The asset to issue.
-# + request - Borrower details and the optional return date.
-# + return - The asset in its new status, or an `AppError`.
 public isolated function loanAsset(string assetTag, LoanRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(request.borrower, "borrower");
@@ -397,11 +308,6 @@ public isolated function loanAsset(string assetTag, LoanRequest request) returns
     return stored;
 }
 
-# Accepts an asset back from a borrower, or releases a booked space.
-#
-# + assetTag - The asset being handed back.
-# + request - Optional condition notes and the maintenance flag.
-# + return - The asset in its new status, or an `AppError`.
 public isolated function returnAsset(string assetTag, ReturnRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireMaxLength(request.notes, "notes", 450);
@@ -434,19 +340,10 @@ public isolated function returnAsset(string assetTag, ReturnRequest request) ret
     return stored;
 }
 
-# The loan history, newest first.
-#
-# + assetTag - Narrow to one asset, or `()` for the whole ministry.
-# + return - The matching loan records.
 public isolated function loanHistory(string? assetTag = ()) returns LoanRecord[] {
     return selectLoans(assetTag);
 }
 
-# Attaches a new component to an asset.
-#
-# + assetTag - The parent asset.
-# + request - The component to add; `compId` is generated when omitted.
-# + return - The parent asset with the component attached, or an `AppError`.
 public isolated function addComponent(string assetTag, ComponentRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(request.name, "name");
@@ -483,11 +380,6 @@ public isolated function addComponent(string assetTag, ComponentRequest request)
     return check saveAsset(updated);
 }
 
-# Detaches a component from an asset.
-#
-# + assetTag - The parent asset.
-# + componentId - The component to remove.
-# + return - The parent asset without the component, or an `AppError`.
 public isolated function removeComponent(string assetTag, string componentId) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(componentId, "componentId");
@@ -510,11 +402,6 @@ public isolated function removeComponent(string assetTag, string componentId) re
     return check saveAsset(updated);
 }
 
-# Adds a maintenance, servicing, inspection or booking schedule to an asset.
-#
-# + assetTag - The parent asset.
-# + request - The schedule to add; `scheduleId` is generated when omitted.
-# + return - The parent asset with the schedule attached, or an `AppError`.
 public isolated function addSchedule(string assetTag, ScheduleRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(request.dueDate, "dueDate");
@@ -563,12 +450,6 @@ public isolated function addSchedule(string assetTag, ScheduleRequest request) r
     return check saveAsset(updated);
 }
 
-# Updates a schedule while keeping its identifier.
-#
-# + assetTag - The parent asset.
-# + scheduleId - The schedule to change.
-# + update - Fields to change; omitted fields retain their values.
-# + return - The updated asset, or an error.
 public isolated function updateSchedule(string assetTag, string scheduleId, ScheduleUpdate update)
         returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
@@ -617,11 +498,6 @@ isolated function checkBookingAgainstLoan(string assetTag, string dueDate) retur
     return ();
 }
 
-# Removes a schedule entry from an asset.
-#
-# + assetTag - The parent asset.
-# + scheduleId - The schedule to remove.
-# + return - The parent asset without the schedule, or an `AppError`.
 public isolated function removeSchedule(string assetTag, string scheduleId) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(scheduleId, "scheduleId");
@@ -644,11 +520,6 @@ public isolated function removeSchedule(string assetTag, string scheduleId) retu
     return check saveAsset(updated);
 }
 
-# Converts the task DTOs of a request into stored `Task` values, generating
-# identifiers where the client did not supply them.
-#
-# + requests - The incoming task DTOs.
-# + return - The materialised tasks, or a `ValidationError`.
 isolated function materialiseTasks(TaskRequest[] requests) returns Task[]|ValidationError {
     Task[] tasks = [];
     map<boolean> seen = {};
@@ -668,11 +539,6 @@ isolated function materialiseTasks(TaskRequest[] requests) returns Task[]|Valida
     return tasks;
 }
 
-# Opens a work order against a faulty asset.
-#
-# + assetTag - The parent asset.
-# + request - The work order to create; ids are generated when omitted.
-# + return - The parent asset with the work order attached, or an `AppError`.
 public isolated function createWorkOrder(string assetTag, WorkOrderRequest request) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(request.description, "description");
@@ -715,12 +581,6 @@ public isolated function createWorkOrder(string assetTag, WorkOrderRequest reque
     return check saveAsset(updated);
 }
 
-# Updates an existing work order, including its sub-tasks.
-#
-# + assetTag - The parent asset.
-# + orderId - The work order to modify.
-# + update - The fields to change.
-# + return - The parent asset with the modified work order, or an `AppError`.
 public isolated function updateWorkOrder(string assetTag, string orderId, WorkOrderUpdate update)
         returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
@@ -776,11 +636,6 @@ public isolated function updateWorkOrder(string assetTag, string orderId, WorkOr
     return check saveAsset(updated);
 }
 
-# Deletes a work order from an asset.
-#
-# + assetTag - The parent asset.
-# + orderId - The work order to delete.
-# + return - The parent asset without the work order, or an `AppError`.
 public isolated function deleteWorkOrder(string assetTag, string orderId) returns Asset|AppError {
     check requireNonBlank(assetTag, "assetTag");
     check requireNonBlank(orderId, "orderId");
@@ -807,10 +662,6 @@ public isolated function deleteWorkOrder(string assetTag, string orderId) return
     return check saveAsset(updated);
 }
 
-# Tests whether an asset still has at least one unfinished work order.
-#
-# + asset - The asset to inspect.
-# + return - `true` when an OPEN or IN_PROGRESS job remains.
 isolated function hasOpenWorkOrder(Asset asset) returns boolean {
     foreach WorkOrder w in asset.workOrders {
         if w.status == OPEN || w.status == IN_PROGRESS {
